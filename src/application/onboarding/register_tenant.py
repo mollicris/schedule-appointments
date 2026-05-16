@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.application.shared.unit_of_work import UnitOfWork
 from src.application.shared.use_case import UseCase
 from src.domain.shared.errors import ConflictError, ValidationError
@@ -73,12 +75,14 @@ class RegisterTenantUseCase(UseCase[RegisterTenantInput, RegisterTenantOutput]):
         password_hasher: PasswordHasher,
         verification_token_service: VerificationTokenService,
         user_factory: UserFactory,
+        session: AsyncSession | None = None,
     ) -> None:
         self._tenants = tenants
         self._uow = uow
         self._hasher = password_hasher
         self._tokens = verification_token_service
         self._user_factory = user_factory
+        self._session = session
 
     async def execute(self, input_data: RegisterTenantInput) -> RegisterTenantOutput:
         self._validate_input(input_data)
@@ -98,6 +102,13 @@ class RegisterTenantUseCase(UseCase[RegisterTenantInput, RegisterTenantOutput]):
                 industry=input_data.industry,
             )
 
+            # Persist tenant FIRST so FK constraint passes
+            await self._tenants.add(tenant)
+
+            # Explicitly flush the session to ensure tenant is persisted before creating user
+            if self._session:
+                await self._session.flush()
+
             password_hash = self._hasher.hash(input_data.admin_password)
             await self._user_factory.create_admin_user(
                 tenant_id=tenant.id,
@@ -105,7 +116,6 @@ class RegisterTenantUseCase(UseCase[RegisterTenantInput, RegisterTenantOutput]):
                 password_hash=password_hash,
             )
 
-            await self._tenants.add(tenant)
             verification_token = await self._tokens.issue_for(tenant.id)
 
             await self._uow.commit()

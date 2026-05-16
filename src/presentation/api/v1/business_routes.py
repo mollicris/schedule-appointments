@@ -1,0 +1,169 @@
+from __future__ import annotations
+
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, Field
+
+from src.application.business.create_business import (
+    CreateBusinessInput,
+    CreateBusinessOutput,
+    CreateBusinessUseCase,
+)
+from src.application.business.get_business import (
+    GetBusinessInput,
+    GetBusinessOutput,
+    GetBusinessUseCase,
+)
+from src.application.business.list_businesses import (
+    ListBusinessesInput,
+    ListBusinessesOutput,
+    ListBusinessesUseCase,
+)
+from src.application.shared.unit_of_work import UnitOfWork
+from src.domain.business.repository import BusinessRepository
+from src.presentation.dependencies import (
+    DbSession,
+    get_business_repository,
+    get_unit_of_work,
+)
+from src.presentation.schemas import PaginatedResponse, SuccessResponse, paginated_response, success_response
+
+router = APIRouter(prefix="/businesses", tags=["businesses"])
+
+
+class CreateBusinessRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    phone: str = Field(min_length=1, max_length=20)
+    slug: str | None = Field(default=None, max_length=127)
+    timezone: str = Field(default="UTC", max_length=63)
+    email: str | None = Field(default=None, max_length=255)
+    address: str | None = Field(default=None)
+    description: str | None = Field(default=None)
+
+
+class BusinessDetailResponse(BaseModel):
+    business_id: UUID
+    name: str
+    slug: str
+    phone: str
+    email: str | None
+    address: str | None
+    description: str | None
+    timezone: str
+    is_active: bool
+
+
+class BusinessSummaryResponse(BaseModel):
+    business_id: UUID
+    name: str
+    slug: str
+    phone: str
+    is_active: bool
+
+
+class CreateBusinessResponseData(BaseModel):
+    business_id: UUID
+    slug: str
+
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new business",
+    description="Create a new business for the authenticated tenant.",
+)
+async def create_business(
+    payload: CreateBusinessRequest,
+    session: DbSession,
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
+    uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> SuccessResponse:
+    use_case = CreateBusinessUseCase(
+        businesses=businesses,
+        uow=uow,
+    )
+    output: CreateBusinessOutput = await use_case.execute(
+        CreateBusinessInput(
+            name=payload.name,
+            phone=payload.phone,
+            slug=payload.slug,
+            timezone=payload.timezone,
+            email=payload.email,
+            address=payload.address,
+            description=payload.description,
+        )
+    )
+    return success_response(
+        message="Business created successfully",
+        code="BUSINESS_CREATED",
+        data=CreateBusinessResponseData(
+            business_id=output.business_id,
+            slug=output.slug,
+        ),
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.get(
+    "/{business_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Get a business by ID",
+    description="Retrieve details of a specific business for the authenticated tenant.",
+)
+async def get_business(
+    business_id: UUID,
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
+) -> SuccessResponse:
+    use_case = GetBusinessUseCase(businesses=businesses)
+    output: GetBusinessOutput = await use_case.execute(GetBusinessInput(business_id=business_id))
+
+    return success_response(
+        message="Business retrieved successfully",
+        code="BUSINESS_FOUND",
+        data=BusinessDetailResponse(
+            business_id=output.business_id,
+            name=output.name,
+            slug=output.slug,
+            phone=output.phone,
+            email=output.email,
+            address=output.address,
+            description=output.description,
+            timezone=output.timezone,
+            is_active=output.is_active,
+        ),
+    )
+
+
+@router.get(
+    "",
+    status_code=status.HTTP_200_OK,
+    summary="List all active businesses",
+    description="Retrieve a paginated list of active businesses for the authenticated tenant.",
+)
+async def list_businesses(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)] = ...,
+) -> PaginatedResponse:
+    use_case = ListBusinessesUseCase(businesses=businesses)
+    output: ListBusinessesOutput = await use_case.execute(
+        ListBusinessesInput(page=page, page_size=page_size)
+    )
+
+    return paginated_response(
+        data=[
+            BusinessSummaryResponse(
+                business_id=b.business_id,
+                name=b.name,
+                slug=b.slug,
+                phone=b.phone,
+                is_active=b.is_active,
+            )
+            for b in output.businesses
+        ],
+        total=output.total,
+        page=output.page,
+        page_size=output.page_size,
+    )

@@ -11,7 +11,18 @@ from src.infrastructure.config.settings import get_settings
 from src.infrastructure.persistence.database import Base
 
 # Import all ORM models so they register on Base.metadata:
-# from src.infrastructure.persistence.models import tenants, businesses, ...  # noqa: F401
+from src.infrastructure.persistence.models import (  # noqa: F401
+    AppointmentModel,
+    BusinessHourModel,
+    BusinessModel,
+    ClientModel,
+    ConversationModel,
+    MessageModel,
+    ProfessionalModel,
+    ServiceModel,
+    TenantModel,
+    UserModel,
+)
 
 config = context.config
 
@@ -43,10 +54,15 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_migrations_online() -> None:
+    # Get the database URL from settings
+    url = config.get_main_option("sqlalchemy.url")
+
+    # Create async engine with asyncpg
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        {"sqlalchemy.url": url},
         prefix="sqlalchemy.",
         future=True,
+        echo=False,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

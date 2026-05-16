@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, time
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Time, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Time, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -78,5 +78,5 @@ class BusinessHourModel(Base):
     )
 
     __table_args__ = (
-        # Unique per business per day
+        UniqueConstraint("business_id", "day_of_week", name="uq_business_hours_business_day"),
     )

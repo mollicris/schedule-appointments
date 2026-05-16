@@ -1,0 +1,1 @@
+"""Professional bounded context."""

@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from src.domain.shared.errors import (
+    AuthenticationError,
     BusinessRuleViolationError,
     ConflictError,
     DomainError,
@@ -33,7 +34,14 @@ class APIException(Exception):
 
 def domain_error_to_api_exception(error: DomainError) -> APIException:
     """Convert domain errors to API exceptions with appropriate HTTP status codes."""
-    if isinstance(error, ValidationError):
+    if isinstance(error, AuthenticationError):
+        return APIException(
+            message=str(error),
+            code="UNAUTHORIZED",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            details=[ErrorDetail(code="UNAUTHORIZED", message=str(error))],
+        )
+    elif isinstance(error, ValidationError):
         return APIException(
             message=str(error),
             code="VALIDATION_ERROR",

@@ -15,6 +15,7 @@ dependencies = [
     "argon2-cffi",
     "redis",
     "structlog",
+    "python-jose[cryptography]",
 ]
 
 [build-system]

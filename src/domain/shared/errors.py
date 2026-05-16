@@ -24,3 +24,7 @@ class TenantIsolationError(DomainError):
 
 class BusinessRuleViolationError(DomainError):
     """Operation would violate an explicit business rule."""
+
+
+class AuthenticationError(DomainError):
+    """Credentials are invalid or the account cannot be authenticated."""

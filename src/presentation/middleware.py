@@ -3,36 +3,63 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import Request
+from fastapi.responses import JSONResponse
+from jose import JWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.application.shared.tenant_context import set_current_tenant, TenantContext
-from src.domain.shared.errors import ValidationError
+from src.application.shared.tenant_context import TenantContext, set_current_tenant
+from src.infrastructure.adapters.jwt_service import JWTService
+from src.infrastructure.config.settings import get_settings
+
+_PUBLIC_PREFIXES = (
+    "/api/v1/onboarding",
+    "/api/v1/auth",
+    "/health",
+    "/docs",
+    "/openapi",
+    "/webhooks",
+)
 
 
 class TenantContextMiddleware(BaseHTTPMiddleware):
-    """Extract tenant context from request and set it in ContextVar.
+    """Validates the JWT Bearer token and sets TenantContext for every protected request.
 
-    Phase 1: Uses X-Tenant-ID header for testing. In production, this
-    will extract tenant_id from JWT token.
+    Public routes (onboarding, auth, health, docs, webhooks) bypass this check.
     """
 
+    def __init__(self, app, **kwargs) -> None:
+        super().__init__(app, **kwargs)
+        settings = get_settings()
+        self._jwt = JWTService(
+            secret_key=settings.jwt_secret_key,
+            algorithm=settings.jwt_algorithm,
+            access_token_expire_minutes=settings.jwt_access_token_expire_minutes,
+        )
+
     async def dispatch(self, request: Request, call_next):
-        # Skip context setting for public endpoints and system routes
-        if request.url.path.startswith(("/api/v1/onboarding", "/api/v1/auth", "/health", "/docs", "/openapi")):
+        if any(request.url.path.startswith(prefix) for prefix in _PUBLIC_PREFIXES):
             return await call_next(request)
 
-        # For tenant-scoped endpoints, extract tenant_id from header
-        tenant_id_header = request.headers.get("X-Tenant-ID")
-        if not tenant_id_header:
-            raise ValidationError("Missing X-Tenant-ID header")
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Missing or invalid Authorization header", "code": "UNAUTHORIZED"},
+            )
 
+        token = auth_header[len("Bearer "):]
         try:
-            tenant_id = UUID(tenant_id_header)
-        except ValueError as e:
-            raise ValidationError("Invalid X-Tenant-ID format") from e
+            payload = self._jwt.decode_access_token(token)
+        except JWTError:
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Invalid or expired access token", "code": "UNAUTHORIZED"},
+            )
 
-        # Set tenant context for this request
-        context = TenantContext(tenant_id=tenant_id)
-        set_current_tenant(context)
+        set_current_tenant(TenantContext(
+            tenant_id=payload.tenant_id,
+            user_id=payload.user_id,
+            roles=frozenset([payload.role]),
+        ))
 
         return await call_next(request)

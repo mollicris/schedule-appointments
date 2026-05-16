@@ -16,6 +16,13 @@ class UserRepositoryImpl(UserRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def get_by_id(self, user_id: UUID) -> User | None:
+        result = await self._session.execute(
+            select(UserModel).where(UserModel.id == user_id)
+        )
+        model = result.scalar_one_or_none()
+        return _to_domain(model) if model else None
+
     async def get_by_email(self, email: str) -> User | None:
         result = await self._session.execute(
             select(UserModel).where(

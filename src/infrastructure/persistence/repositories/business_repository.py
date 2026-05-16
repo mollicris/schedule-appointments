@@ -118,6 +118,16 @@ class BusinessRepositoryImpl(BusinessRepository):
         model = BusinessMapper.fromPersistence(business)
         await self._session.merge(model)
 
+    async def get_by_whatsapp_phone_number_id(self, phone_number_id: str) -> Business | None:
+        """Global lookup by WhatsApp phone_number_id — no tenant scope (webhook use only)."""
+        row = await self._session.scalar(
+            select(BusinessModel).where(
+                BusinessModel.whatsapp_phone_number_id == phone_number_id,
+                BusinessModel.is_active.is_(True),
+            )
+        )
+        return BusinessMapper.toPersistence(row) if row else None
+
     async def delete(self, business_id: UUID) -> bool:
         tenant = get_current_tenant()
         stmt = select(BusinessModel).where(

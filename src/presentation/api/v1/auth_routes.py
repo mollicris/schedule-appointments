@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 
 from src.application.identity.authenticate_user import (
@@ -13,6 +13,7 @@ from src.application.identity.authenticate_user import (
 )
 from src.application.identity.logout import LogoutInput, LogoutUseCase
 from src.application.identity.refresh_token import RefreshTokenInput, RefreshTokenUseCase
+from src.application.shared.tenant_context import get_current_tenant
 from src.domain.identity.repository import UserRepository
 from src.infrastructure.adapters.jwt_service import JWTService
 from src.infrastructure.adapters.password_hasher import Argon2PasswordHasher
@@ -36,6 +37,13 @@ class RefreshRequest(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh_token: str
+
+
+class MeResponse(BaseModel):
+    user_id: UUID
+    tenant_id: UUID
+    email: str
+    role: str
 
 
 class TokenResponse(BaseModel):
@@ -114,3 +122,25 @@ async def refresh(
 async def logout(payload: LogoutRequest) -> None:
     use_case = LogoutUseCase()
     await use_case.execute(LogoutInput(refresh_token=payload.refresh_token))
+
+
+@router.get(
+    "/me",
+    status_code=status.HTTP_200_OK,
+    summary="Get current authenticated user",
+)
+async def me(
+    users: Annotated[UserRepository, Depends(get_user_repository)],
+) -> MeResponse:
+    ctx = get_current_tenant()
+    if ctx.user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    user = await users.get_by_id(ctx.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return MeResponse(
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        email=user.email,
+        role=user.role.value,
+    )

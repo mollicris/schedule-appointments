@@ -21,6 +21,8 @@ class BusinessMapper:
             address=business.address,
             timezone=business.timezone,
             is_active=business.is_active,
+            whatsapp_phone_number_id=business.whatsapp_phone_number_id,
+            whatsapp_app_secret=business.whatsapp_app_secret,
             created_at=business.created_at,
             updated_at=business.updated_at,
         )
@@ -42,6 +44,8 @@ class BusinessMapper:
             address=model.address,
             timezone=model.timezone,
             is_active=model.is_active,
+            whatsapp_phone_number_id=model.whatsapp_phone_number_id,
+            whatsapp_app_secret=model.whatsapp_app_secret,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )

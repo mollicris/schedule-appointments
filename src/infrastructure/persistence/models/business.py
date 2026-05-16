@@ -23,6 +23,8 @@ class BusinessModel(Base):
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     timezone: Mapped[str] = mapped_column(String(63), nullable=False, default="UTC")
     is_active: Mapped[bool] = mapped_column(default=True)
+    whatsapp_phone_number_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    whatsapp_app_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()

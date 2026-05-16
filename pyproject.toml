@@ -16,6 +16,8 @@ dependencies = [
     "redis",
     "structlog",
     "python-jose[cryptography]",
+    "httpx",
+    "anthropic",
 ]
 
 [build-system]

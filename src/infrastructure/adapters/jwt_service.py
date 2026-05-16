@@ -13,6 +13,7 @@ class TokenPayload:
     user_id: UUID
     tenant_id: UUID
     role: str
+    email: str
 
 
 class JWTService:
@@ -31,12 +32,14 @@ class JWTService:
         user_id: UUID,
         tenant_id: UUID,
         role: str,
+        email: str,
     ) -> tuple[str, datetime]:
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=self._access_expire)
         payload = {
             "sub": str(user_id),
             "tenant_id": str(tenant_id),
             "role": role,
+            "email": email,
             "type": "access",
             "exp": expires_at,
             "iat": datetime.now(timezone.utc),
@@ -53,6 +56,7 @@ class JWTService:
             user_id=UUID(payload["sub"]),
             tenant_id=UUID(payload["tenant_id"]),
             role=payload["role"],
+            email=payload.get("email", ""),
         )
 
     @staticmethod

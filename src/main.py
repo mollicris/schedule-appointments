@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from src.infrastructure.config.settings import get_settings
 from src.infrastructure.config.logging import configure_logging
@@ -26,7 +27,30 @@ def create_app() -> FastAPI:
         version="0.1.0",
         debug=settings.app_debug,
         lifespan=lifespan,
+        swagger_ui_parameters={"persistAuthorization": True},
     )
+
+    def custom_openapi() -> dict:
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            routes=app.routes,
+        )
+        schema.setdefault("components", {})
+        schema["components"]["securitySchemes"] = {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            }
+        }
+        schema["security"] = [{"BearerAuth": []}]
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = custom_openapi  # type: ignore[method-assign]
 
     app.add_middleware(TenantContextMiddleware)
     app.add_middleware(

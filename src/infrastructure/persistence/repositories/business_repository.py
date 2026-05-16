@@ -62,17 +62,9 @@ class BusinessRepositoryImpl(BusinessRepository):
         return [BusinessMapper.toPersistence(row) for row in rows if row]
 
     async def count_active(self) -> int:
-        tenant = get_current_tenant()
-        stmt = select(1).select_from(BusinessModel).where(
-            and_(
-                BusinessModel.tenant_id == tenant.tenant_id,
-                BusinessModel.is_active.is_(True),
-            )
-        )
-        result = await self._session.scalar(select(select(stmt).scalars().__len__()))
-        # Better approach using count
         from sqlalchemy import func
 
+        tenant = get_current_tenant()
         count_stmt = select(func.count(BusinessModel.id)).where(
             and_(
                 BusinessModel.tenant_id == tenant.tenant_id,

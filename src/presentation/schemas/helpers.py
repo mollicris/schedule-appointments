@@ -35,31 +35,18 @@ def success_response(
 
 
 def paginated_response(
-    items: list[T],
+    data: list[T],
     total: int,
     page: int = 1,
     page_size: int = 10,
     message: str = "Items retrieved successfully",
     code: str | None = None,
 ) -> PaginatedResponse[T]:
-    """Helper to create a paginated response.
-
-    Args:
-        items: List of items for the current page
-        total: Total number of items across all pages
-        page: Current page number (1-indexed)
-        page_size: Items per page
-        message: Human-readable message
-        code: Optional response code
-
-    Returns:
-        PaginatedResponse with pagination metadata
-    """
-    pages = (total + page_size - 1) // page_size  # Ceiling division
+    pages = (total + page_size - 1) // page_size
     return PaginatedResponse(
         success=True,
         message=message,
-        data=items,
+        data=data,
         code=code,
         pagination=PaginationMeta(
             total=total,

@@ -95,7 +95,6 @@ async def create_professional(
         message="Professional registered successfully",
         code="PROFESSIONAL_CREATED",
         data={"professional_id": str(output.professional_id), "name": output.name},
-        status_code=status.HTTP_201_CREATED,
     )
 
 

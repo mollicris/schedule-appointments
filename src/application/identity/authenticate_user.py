@@ -55,6 +55,7 @@ class AuthenticateUserUseCase(UseCase[AuthenticateUserInput, AuthenticateUserOut
             user_id=user.id,
             tenant_id=user.tenant_id,
             role=user.role.value,
+            email=user.email,
         )
 
         refresh_token = self._jwt.generate_refresh_token()

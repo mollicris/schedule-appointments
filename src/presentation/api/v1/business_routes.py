@@ -119,7 +119,6 @@ async def create_business(
             business_id=output.business_id,
             slug=output.slug,
         ),
-        status_code=status.HTTP_201_CREATED,
     )
 
 

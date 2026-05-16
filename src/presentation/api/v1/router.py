@@ -4,6 +4,7 @@ from src.presentation.api.v1 import (
     auth_routes,
     business_routes,
     onboarding_routes,
+    service_routes,
 )
 
 api_v1_router = APIRouter()
@@ -14,3 +15,4 @@ api_v1_router.include_router(auth_routes.router, prefix="/auth", tags=["auth"])
 
 # Tenant-scoped routers are added here as bounded contexts come online:
 api_v1_router.include_router(business_routes.router)
+api_v1_router.include_router(service_routes.router)

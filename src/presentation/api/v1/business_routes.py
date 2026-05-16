@@ -11,6 +11,11 @@ from src.application.business.create_business import (
     CreateBusinessOutput,
     CreateBusinessUseCase,
 )
+from src.application.business.delete_business import (
+    DeleteBusinessInput,
+    DeleteBusinessOutput,
+    DeleteBusinessUseCase,
+)
 from src.application.business.get_business import (
     GetBusinessInput,
     GetBusinessOutput,
@@ -21,10 +26,14 @@ from src.application.business.list_businesses import (
     ListBusinessesOutput,
     ListBusinessesUseCase,
 )
+from src.application.business.update_business import (
+    UpdateBusinessInput,
+    UpdateBusinessOutput,
+    UpdateBusinessUseCase,
+)
 from src.application.shared.unit_of_work import UnitOfWork
 from src.domain.business.repository import BusinessRepository
 from src.presentation.dependencies import (
-    DbSession,
     get_business_repository,
     get_unit_of_work,
 )
@@ -63,6 +72,15 @@ class BusinessSummaryResponse(BaseModel):
     is_active: bool
 
 
+class UpdateBusinessRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    phone: str | None = Field(default=None, min_length=1, max_length=20)
+    email: str | None = Field(default=None, max_length=255)
+    address: str | None = Field(default=None)
+    description: str | None = Field(default=None)
+    timezone: str | None = Field(default=None, max_length=63)
+
+
 class CreateBusinessResponseData(BaseModel):
     business_id: UUID
     slug: str
@@ -76,7 +94,6 @@ class CreateBusinessResponseData(BaseModel):
 )
 async def create_business(
     payload: CreateBusinessRequest,
-    session: DbSession,
     businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
     uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
 ) -> SuccessResponse:
@@ -166,4 +183,63 @@ async def list_businesses(
         total=output.total,
         page=output.page,
         page_size=output.page_size,
+    )
+
+
+@router.put(
+    "/{business_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Update a business",
+    description="Update the details of an existing business.",
+)
+async def update_business(
+    business_id: UUID,
+    payload: UpdateBusinessRequest,
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
+    uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> SuccessResponse:
+    use_case = UpdateBusinessUseCase(businesses=businesses, uow=uow)
+    output: UpdateBusinessOutput = await use_case.execute(
+        UpdateBusinessInput(
+            business_id=business_id,
+            name=payload.name,
+            phone=payload.phone,
+            email=payload.email,
+            address=payload.address,
+            description=payload.description,
+            timezone=payload.timezone,
+        )
+    )
+    return success_response(
+        message="Business updated successfully",
+        code="BUSINESS_UPDATED",
+        data=BusinessSummaryResponse(
+            business_id=output.business_id,
+            name=output.name,
+            slug=output.slug,
+            phone=output.phone,
+            is_active=True,
+        ),
+    )
+
+
+@router.delete(
+    "/{business_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Delete a business",
+    description="Soft-delete a business (marks it as inactive).",
+)
+async def delete_business(
+    business_id: UUID,
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
+    uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> SuccessResponse:
+    use_case = DeleteBusinessUseCase(businesses=businesses, uow=uow)
+    output: DeleteBusinessOutput = await use_case.execute(
+        DeleteBusinessInput(business_id=business_id)
+    )
+    return success_response(
+        message="Business deleted successfully",
+        code="BUSINESS_DELETED",
+        data={"business_id": str(output.business_id), "deleted": output.deleted},
     )

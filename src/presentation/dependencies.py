@@ -12,13 +12,15 @@ from src.application.onboarding.register_tenant import (
     VerificationTokenService,
 )
 from src.application.shared.unit_of_work import UnitOfWork
-from src.domain.tenant.repository import TenantRepository
 from src.domain.business.repository import BusinessRepository
+from src.domain.service.repository import ServiceRepository
+from src.domain.tenant.repository import TenantRepository
 from src.infrastructure.adapters.password_hasher import Argon2PasswordHasher
 from src.infrastructure.adapters.user_factory import UserFactoryImpl
 from src.infrastructure.adapters.verification_token_service import InMemoryVerificationTokenService
 from src.infrastructure.persistence.database import get_session_factory
 from src.infrastructure.persistence.repositories.business_repository import BusinessRepositoryImpl
+from src.infrastructure.persistence.repositories.service_repository import ServiceRepositoryImpl
 from src.infrastructure.persistence.repositories.tenant_repository import TenantRepositoryImpl
 
 _verification_token_service: InMemoryVerificationTokenService | None = None
@@ -64,6 +66,11 @@ async def get_user_factory(session: DbSession) -> UserFactory:
 def get_business_repository(session: DbSession) -> BusinessRepository:
     """DI: BusinessRepository."""
     return BusinessRepositoryImpl(session)
+
+
+def get_service_repository(session: DbSession) -> ServiceRepository:
+    """DI: ServiceRepository."""
+    return ServiceRepositoryImpl(session)
 
 
 async def get_unit_of_work(session: DbSession) -> UnitOfWork:

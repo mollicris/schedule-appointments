@@ -17,8 +17,8 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
-        # Skip context setting for public endpoints
-        if request.url.path.startswith(("/api/v1/onboarding", "/api/v1/auth")):
+        # Skip context setting for public endpoints and system routes
+        if request.url.path.startswith(("/api/v1/onboarding", "/api/v1/auth", "/health", "/docs", "/openapi")):
             return await call_next(request)
 
         # For tenant-scoped endpoints, extract tenant_id from header

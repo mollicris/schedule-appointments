@@ -28,8 +28,9 @@ class Business(TenantAwareEntity):
     address: str | None = None
     timezone: str = "UTC"
     is_active: bool = True
-    whatsapp_phone_number_id: str | None = None   # Meta phone_number_id for this business
-    whatsapp_app_secret: str | None = None        # Used to verify HMAC signatures
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_app_secret: str | None = None
+    owner_whatsapp: str | None = None
 
     @classmethod
     def create(

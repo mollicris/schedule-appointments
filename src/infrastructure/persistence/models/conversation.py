@@ -45,3 +45,20 @@ class MessageModel(Base):
     __table_args__ = (
         # Messages are immutable, created_at is primary ordering
     )
+
+
+class HumanTransferModel(Base):
+    __tablename__ = "human_transfers"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    business_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("clients.id", ondelete="RESTRICT"), nullable=False, index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    context_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

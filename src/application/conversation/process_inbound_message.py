@@ -13,12 +13,14 @@ from src.domain.business_hours.repository import BusinessHourRepository
 from src.domain.client.client import Client
 from src.domain.client.repository import ClientRepository
 from src.domain.conversation.conversation import Conversation, Message
+from src.domain.conversation.human_transfer import HumanTransfer
+from src.domain.conversation.human_transfer_repository import HumanTransferRepository
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.professional.repository import ProfessionalRepository
 from src.domain.service.repository import ServiceRepository
 from src.domain.service.service import Service
 from src.infrastructure.ai.agent_tools import ToolContext
-from src.infrastructure.ai.booking_agent import AgentInput, BookingAgent
+from src.infrastructure.ai.booking_agent import AgentInput, BookingAgent, _FALLBACK_REPLY
 from src.infrastructure.messaging.whatsapp_client import WhatsAppClient
 
 log = structlog.get_logger(__name__)
@@ -77,6 +79,7 @@ class ProcessInboundMessageUseCase:
         appointments: AppointmentRepository,
         professionals: ProfessionalRepository,
         business_hours: BusinessHourRepository,
+        human_transfers: HumanTransferRepository,
         agent: BookingAgent,
         uow: UnitOfWork,
     ) -> None:
@@ -86,6 +89,7 @@ class ProcessInboundMessageUseCase:
         self._appointments = appointments
         self._professionals = professionals
         self._business_hours = business_hours
+        self._human_transfers = human_transfers
         self._agent = agent
         self._uow = uow
 
@@ -152,13 +156,23 @@ class ProcessInboundMessageUseCase:
             await self._conversations.add_message(inbound)
             conversation.record_message()
 
-            # 6. Build ToolContext with the now-resolved client_id
+            # 6. If already escalated, save message and skip agent
+            if conversation.is_escalated:
+                await self._conversations.update(conversation)
+                await self._uow.commit()
+                return ProcessInboundMessageOutput(
+                    conversation_id=conversation.id,
+                    reply_sent=False,
+                )
+
+            # 7. Build ToolContext with the now-resolved client_id
             tool_ctx = ToolContext(
                 tenant_id=input_data.tenant_id,
                 business_id=input_data.business_id,
                 client_id=client.id,
                 client_name=client.name,
                 client_whatsapp=client.whatsapp_number,
+                conversation_id=conversation.id,
                 services=self._services,
                 appointments=self._appointments,
                 professionals=self._professionals,
@@ -167,7 +181,7 @@ class ProcessInboundMessageUseCase:
                 uow=self._uow,
             )
 
-            # 7. Run the Claude agent (may call tools, do multiple iterations)
+            # 8. Run the Claude agent (may call tools, do multiple iterations)
             is_returning = client.appointment_count > 0
             agent_input = AgentInput(
                 business=input_data.business,
@@ -186,12 +200,42 @@ class ProcessInboundMessageUseCase:
                     conversation_id=str(conversation.id),
                     client_id=str(client.id),
                 )
-                reply_text = (
-                    "Lo siento, hubo un problema procesando tu solicitud. "
-                    "Por favor, intenta de nuevo en un momento."
-                )
+                reply_text = _FALLBACK_REPLY
 
-            # 8. Persist bot reply
+            # 9. Escalate if tool triggered it or agent hit max retries
+            should_escalate = tool_ctx.escalation_triggered or reply_text == _FALLBACK_REPLY
+            if should_escalate:
+                conversation.escalate()
+                transfer = HumanTransfer.create(
+                    tenant_id=input_data.tenant_id,
+                    business_id=input_data.business_id,
+                    conversation_id=conversation.id,
+                    client_id=client.id,
+                    reason=tool_ctx.escalation_reason or "Límite de iteraciones del agente alcanzado",
+                    context_snapshot=[
+                        {"sender": m.sender, "content": m.content}
+                        for m in history[-5:]
+                    ],
+                )
+                await self._human_transfers.add(transfer)
+                log.info(
+                    "conversation_escalated",
+                    conversation_id=str(conversation.id),
+                    reason=transfer.reason,
+                )
+                # Notify owner via WhatsApp if configured
+                if input_data.business.owner_whatsapp:
+                    await _notify_owner(
+                        wa_client=input_data.whatsapp_client,
+                        owner_number=input_data.business.owner_whatsapp,
+                        business_name=input_data.business.name,
+                        client_name=client.name,
+                        client_number=client.whatsapp_number,
+                        reason=transfer.reason,
+                        context=transfer.context_snapshot,
+                    )
+
+            # 10. Persist bot reply
             bot_msg = Message.from_bot(
                 tenant_id=input_data.tenant_id,
                 conversation_id=conversation.id,
@@ -200,7 +244,7 @@ class ProcessInboundMessageUseCase:
             await self._conversations.add_message(bot_msg)
             conversation.record_message()
 
-            # 9. Update conversation
+            # 11. Update conversation
             await self._conversations.update(conversation)
             await self._uow.commit()
 
@@ -220,3 +264,32 @@ class ProcessInboundMessageUseCase:
             conversation_id=conversation.id,
             reply_sent=reply_sent,
         )
+
+
+async def _notify_owner(
+    *,
+    wa_client,
+    owner_number: str,
+    business_name: str,
+    client_name: str,
+    client_number: str,
+    reason: str | None,
+    context: list[dict],
+) -> None:
+    sender_icon = {"client": "👤", "bot": "🤖"}
+    context_lines = "\n".join(
+        f"{sender_icon.get(m['sender'], '•')} {m['content'][:120]}"
+        for m in context[-5:]
+    )
+    body = (
+        f"🚨 *Nuevo escalamiento — {business_name}*\n\n"
+        f"*Cliente:* {client_name}\n"
+        f"*WhatsApp:* {client_number}\n"
+        f"*Motivo:* {reason or 'No especificado'}\n\n"
+        f"*Últimos mensajes:*\n{context_lines}\n\n"
+        f"Escríbele directamente a {client_number}"
+    )
+    try:
+        await wa_client.send_text(to=owner_number, body=body)
+    except Exception:
+        log.exception("owner_notification_failed", owner=owner_number)

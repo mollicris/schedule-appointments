@@ -14,6 +14,7 @@ from src.application.onboarding.register_tenant import (
 from src.application.shared.unit_of_work import UnitOfWork
 from src.domain.appointment.repository import AppointmentRepository
 from src.domain.business.repository import BusinessRepository
+from src.domain.conversation.human_transfer_repository import HumanTransferRepository
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.business_hours.repository import BusinessHourRepository
 from src.domain.client.repository import ClientRepository
@@ -32,6 +33,7 @@ from src.infrastructure.persistence.repositories.business_hour_repository import
 from src.infrastructure.persistence.repositories.business_repository import BusinessRepositoryImpl
 from src.infrastructure.persistence.repositories.client_repository import ClientRepositoryImpl
 from src.infrastructure.persistence.repositories.conversation_repository import ConversationRepositoryImpl
+from src.infrastructure.persistence.repositories.human_transfer_repository import HumanTransferRepositoryImpl
 from src.infrastructure.persistence.repositories.professional_repository import ProfessionalRepositoryImpl
 from src.infrastructure.persistence.repositories.service_repository import ServiceRepositoryImpl
 from src.infrastructure.persistence.repositories.tenant_repository import TenantRepositoryImpl
@@ -133,6 +135,11 @@ def get_client_repository(session: DbSession) -> ClientRepository:
 def get_conversation_repository(session: DbSession) -> ConversationRepository:
     """DI: ConversationRepository."""
     return ConversationRepositoryImpl(session)
+
+
+def get_human_transfer_repository(session: DbSession) -> HumanTransferRepository:
+    """DI: HumanTransferRepository."""
+    return HumanTransferRepositoryImpl(session)
 
 
 def get_unit_of_work(session: DbSession) -> UnitOfWork:

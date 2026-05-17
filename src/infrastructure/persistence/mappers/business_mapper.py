@@ -23,6 +23,7 @@ class BusinessMapper:
             is_active=business.is_active,
             whatsapp_phone_number_id=business.whatsapp_phone_number_id,
             whatsapp_app_secret=business.whatsapp_app_secret,
+            owner_whatsapp=business.owner_whatsapp,
             created_at=business.created_at,
             updated_at=business.updated_at,
         )
@@ -46,6 +47,7 @@ class BusinessMapper:
             is_active=model.is_active,
             whatsapp_phone_number_id=model.whatsapp_phone_number_id,
             whatsapp_app_secret=model.whatsapp_app_secret,
+            owner_whatsapp=model.owner_whatsapp,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )

@@ -19,6 +19,7 @@ from src.infrastructure.persistence.repositories.business_hour_repository import
 from src.infrastructure.persistence.repositories.business_repository import BusinessRepositoryImpl
 from src.infrastructure.persistence.repositories.client_repository import ClientRepositoryImpl
 from src.infrastructure.persistence.repositories.conversation_repository import ConversationRepositoryImpl
+from src.infrastructure.persistence.repositories.human_transfer_repository import HumanTransferRepositoryImpl
 from src.infrastructure.persistence.repositories.professional_repository import ProfessionalRepositoryImpl
 from src.infrastructure.persistence.repositories.service_repository import ServiceRepositoryImpl
 
@@ -101,6 +102,7 @@ async def simulate_message(body: SimulateMessageRequest) -> SimulateMessageRespo
         appointment_repo = AppointmentRepositoryImpl(session)
         professional_repo = ProfessionalRepositoryImpl(session)
         business_hour_repo = BusinessHourRepositoryImpl(session)
+        human_transfer_repo = HumanTransferRepositoryImpl(session)
 
         services = await service_repo.list_by_business(business.id)
 
@@ -132,6 +134,7 @@ async def simulate_message(body: SimulateMessageRequest) -> SimulateMessageRespo
             appointments=appointment_repo,
             professionals=professional_repo,
             business_hours=business_hour_repo,
+            human_transfers=human_transfer_repo,
             agent=_get_booking_agent(),
             uow=uow,
         )

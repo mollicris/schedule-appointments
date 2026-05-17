@@ -9,6 +9,7 @@ from src.presentation.api.v1 import (
     onboarding_routes,
     professional_routes,
     service_routes,
+    transfer_routes,
 )
 
 api_v1_router = APIRouter()
@@ -24,3 +25,4 @@ api_v1_router.include_router(professional_routes.router)
 api_v1_router.include_router(business_hours_routes.router)
 api_v1_router.include_router(appointment_routes.router)
 api_v1_router.include_router(conversation_routes.router)
+api_v1_router.include_router(transfer_routes.router)

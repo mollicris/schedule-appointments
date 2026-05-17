@@ -128,6 +128,24 @@ TOOL_DEFINITIONS: list[dict] = [
             "required": ["appointment_id"],
         },
     },
+    {
+        "name": "transfer_to_human",
+        "description": (
+            "Escalate the conversation to a human staff member. "
+            "Use when: the client requests a person, asks something outside your scope, "
+            "expresses frustration, or you cannot resolve the request after trying."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Brief reason for the escalation (shown to staff).",
+                },
+            },
+            "required": ["reason"],
+        },
+    },
 ]
 
 
@@ -141,12 +159,16 @@ class ToolContext:
     client_id: UUID
     client_name: str
     client_whatsapp: str
+    conversation_id: UUID
     services: ServiceRepository
     appointments: AppointmentRepository
     professionals: ProfessionalRepository
     business_hours: BusinessHourRepository
     clients: ClientRepository
     uow: UnitOfWork
+    # Set by transfer_to_human tool; read by ProcessInboundMessageUseCase
+    escalation_triggered: bool = False
+    escalation_reason: str = ""
 
 
 # ── Tool executors ────────────────────────────────────────────────────────────
@@ -166,6 +188,8 @@ async def execute_tool(name: str, inputs: dict, ctx: ToolContext) -> str:
             return await _get_my_appointments(ctx)
         if name == "cancel_appointment":
             return await _cancel_appointment(inputs, ctx)
+        if name == "transfer_to_human":
+            return _transfer_to_human(inputs, ctx)
         return json.dumps({"error": f"Unknown tool: {name}"})
     except Exception as exc:
         log.exception("tool_execution_error", tool=name, error=str(exc))
@@ -284,6 +308,12 @@ async def _get_my_appointments(ctx: ToolContext) -> str:
         }
         for a in client_items
     ])
+
+
+def _transfer_to_human(inputs: dict, ctx: ToolContext) -> str:
+    ctx.escalation_triggered = True
+    ctx.escalation_reason = inputs.get("reason", "")
+    return json.dumps({"status": "escalated", "reason": ctx.escalation_reason})
 
 
 async def _cancel_appointment(inputs: dict, ctx: ToolContext) -> str:

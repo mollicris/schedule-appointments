@@ -17,6 +17,7 @@ from src.infrastructure.persistence.models import (  # noqa: F401
     BusinessModel,
     ClientModel,
     ConversationModel,
+    HumanTransferModel,
     MessageModel,
     ProfessionalModel,
     ServiceModel,

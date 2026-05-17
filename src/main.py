@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
@@ -7,6 +8,7 @@ from fastapi.openapi.utils import get_openapi
 
 from src.infrastructure.config.settings import get_settings
 from src.infrastructure.config.logging import configure_logging
+from src.infrastructure.scheduler.reminder_scheduler import run_reminder_scheduler
 from src.presentation.api.v1.router import api_v1_router
 from src.presentation.exception_handlers import register_exception_handlers
 from src.presentation.middleware import TenantContextMiddleware
@@ -17,7 +19,15 @@ from src.presentation.webhooks.test_router import test_router
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
-    yield
+    scheduler_task = asyncio.create_task(run_reminder_scheduler())
+    try:
+        yield
+    finally:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
 
 
 def create_app() -> FastAPI:

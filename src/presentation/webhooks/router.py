@@ -3,11 +3,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import datetime, timezone
 from typing import Annotated, Any
+from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import select, update
 
 from src.application.conversation.process_inbound_message import (
     InboundMessage,
@@ -15,10 +18,12 @@ from src.application.conversation.process_inbound_message import (
     ProcessInboundMessageUseCase,
 )
 from src.application.shared.unit_of_work import UnitOfWork
+from src.domain.appointment.value_objects import AppointmentStatus
 from src.infrastructure.ai.booking_agent import BookingAgent
 from src.infrastructure.config.settings import get_settings
 from src.infrastructure.messaging.whatsapp_client import whatsapp_client_for_business
 from src.infrastructure.persistence.database import get_session_factory
+from src.infrastructure.persistence.models.appointment import AppointmentModel
 from src.infrastructure.persistence.repositories.appointment_repository import AppointmentRepositoryImpl
 from src.infrastructure.persistence.repositories.business_hour_repository import BusinessHourRepositoryImpl
 from src.infrastructure.persistence.repositories.business_repository import BusinessRepositoryImpl
@@ -175,6 +180,17 @@ async def _handle_change(
             if content is None:
                 continue
 
+            # Short-circuit: handle reminder button replies without calling the AI
+            button_id = (extra or {}).get("button_id", "")
+            if button_id.startswith("rem_"):
+                await _handle_reminder_button(
+                    session=session,
+                    button_id=button_id,
+                    wa_client=wa_client,
+                    from_number=msg.get("from", ""),
+                )
+                continue
+
             contact = contacts.get(msg.get("from", ""), {})
             sender_name = contact.get("profile", {}).get("name", "")
 
@@ -204,6 +220,70 @@ async def _handle_change(
                     wamid=msg["id"],
                     business_id=str(business.id),
                 )
+
+
+async def _handle_reminder_button(
+    *,
+    session,
+    button_id: str,
+    wa_client,
+    from_number: str,
+) -> None:
+    """Directly apply confirm/cancel from a reminder button reply."""
+    parts = button_id.split("_", 2)   # rem | confirm/cancel/reschedule | uuid
+    if len(parts) != 3:
+        return
+
+    action, apt_id_str = parts[1], parts[2]
+    try:
+        apt_id = UUID(apt_id_str)
+    except ValueError:
+        log.warning("reminder_button_bad_uuid", button_id=button_id)
+        return
+
+    apt: AppointmentModel | None = await session.get(AppointmentModel, apt_id)
+    if apt is None:
+        return
+
+    now = datetime.now(timezone.utc)
+
+    if action == "confirm":
+        if apt.status == AppointmentStatus.PENDING.value:
+            await session.execute(
+                update(AppointmentModel)
+                .where(AppointmentModel.id == apt_id)
+                .values(status=AppointmentStatus.CONFIRMED.value, updated_at=now)
+            )
+            await session.commit()
+            log.info("reminder_confirmed", appointment_id=apt_id_str)
+        reply = "Perfecto, tu cita ha sido confirmada. ¡Te esperamos!"
+
+    elif action == "cancel":
+        if apt.status in (AppointmentStatus.PENDING.value, AppointmentStatus.CONFIRMED.value):
+            await session.execute(
+                update(AppointmentModel)
+                .where(AppointmentModel.id == apt_id)
+                .values(
+                    status=AppointmentStatus.CANCELLED.value,
+                    cancelled_reason="Cancelado por el cliente via recordatorio",
+                    cancelled_at=now,
+                    updated_at=now,
+                )
+            )
+            await session.commit()
+            log.info("reminder_cancelled", appointment_id=apt_id_str)
+        reply = "Tu cita ha sido cancelada. Escríbenos cuando quieras reagendar."
+
+    elif action == "reschedule":
+        reply = (
+            "Entendido, vamos a reagendar tu cita. "
+            "¿Qué día y hora te quedaría mejor?"
+        )
+
+    else:
+        return
+
+    await wa_client.send_text(to=from_number, body=reply)
 
 
 def _verify_signature(raw_body: bytes, app_secret: str, header: str | None) -> bool:

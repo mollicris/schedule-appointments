@@ -29,6 +29,7 @@ class Appointment(TenantAwareEntity):
     notes: str | None = None
     cancelled_reason: str | None = None
     cancelled_at: datetime | None = None
+    reminder_sent_at: datetime | None = None
 
     @classmethod
     def book(
@@ -124,4 +125,8 @@ class Appointment(TenantAwareEntity):
                 f"Cannot mark no-show for appointment in status '{self.status}'"
             )
         self.status = AppointmentStatus.NO_SHOW
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
+
+    def mark_reminder_sent(self) -> None:
+        self.reminder_sent_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)

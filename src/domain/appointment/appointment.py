@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from src.domain.appointment.value_objects import AppointmentStatus
@@ -45,10 +45,10 @@ class Appointment(TenantAwareEntity):
     ) -> Appointment:
         if duration_minutes < 1:
             raise BusinessRuleViolationError("Duration must be at least 1 minute")
-        if scheduled_at <= datetime.utcnow():
+        if scheduled_at <= datetime.now(timezone.utc):
             raise BusinessRuleViolationError("Appointment must be scheduled in the future")
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return cls(
             id=uuid4(),
             tenant_id=tenant_id,
@@ -99,7 +99,7 @@ class Appointment(TenantAwareEntity):
             raise BusinessRuleViolationError(
                 f"Cannot reschedule appointment in status '{self.status}'"
             )
-        if new_scheduled_at <= datetime.utcnow():
+        if new_scheduled_at <= datetime.now(timezone.utc):
             raise BusinessRuleViolationError("New time must be in the future")
 
         self.scheduled_at = new_scheduled_at

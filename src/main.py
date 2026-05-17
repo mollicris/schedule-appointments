@@ -11,6 +11,7 @@ from src.presentation.api.v1.router import api_v1_router
 from src.presentation.exception_handlers import register_exception_handlers
 from src.presentation.middleware import TenantContextMiddleware
 from src.presentation.webhooks.router import webhooks_router
+from src.presentation.webhooks.test_router import test_router
 
 
 @asynccontextmanager
@@ -63,6 +64,8 @@ def create_app() -> FastAPI:
 
     app.include_router(api_v1_router, prefix="/api/v1")
     app.include_router(webhooks_router, prefix="/webhooks")
+    if not settings.is_production:
+        app.include_router(test_router, prefix="/dev")
 
     register_exception_handlers(app)
 

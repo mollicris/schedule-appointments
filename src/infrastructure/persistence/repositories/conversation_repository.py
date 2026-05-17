@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.conversation.conversation import Conversation, Message
@@ -71,3 +71,31 @@ class ConversationRepositoryImpl(ConversationRepository):
             .limit(limit)
         )
         return [MessageMapper.to_domain(r) for r in reversed(list(rows))]
+
+    async def list_by_business(
+        self,
+        business_id: UUID,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[Conversation]:
+        rows = await self._session.scalars(
+            select(ConversationModel)
+            .where(ConversationModel.business_id == business_id)
+            .order_by(ConversationModel.last_message_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return [ConversationMapper.to_domain(r) for r in rows]
+
+    async def count_by_business(self, business_id: UUID) -> int:
+        count = await self._session.scalar(
+            select(func.count(ConversationModel.id))
+            .where(ConversationModel.business_id == business_id)
+        )
+        return count or 0
+
+    async def get_by_id(self, conversation_id: UUID) -> Conversation | None:
+        row = await self._session.scalar(
+            select(ConversationModel).where(ConversationModel.id == conversation_id)
+        )
+        return ConversationMapper.to_domain(row) if row else None

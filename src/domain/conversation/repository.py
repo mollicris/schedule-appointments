@@ -32,3 +32,17 @@ class ConversationRepository(ABC):
         conversation_id: UUID,
         limit: int = 20,
     ) -> list[Message]: ...
+
+    @abstractmethod
+    async def list_by_business(
+        self,
+        business_id: UUID,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[Conversation]: ...
+
+    @abstractmethod
+    async def count_by_business(self, business_id: UUID) -> int: ...
+
+    @abstractmethod
+    async def get_by_id(self, conversation_id: UUID) -> Conversation | None: ...

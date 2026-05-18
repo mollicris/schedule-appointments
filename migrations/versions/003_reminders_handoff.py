@@ -25,91 +25,70 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # ── appointments: reminder tracking ──────────────────────────────────────
-    # Check if column already exists (idempotent)
-    inspector = sa.inspect(op.get_bind())
-    columns = [col["name"] for col in inspector.get_columns("appointments")]
-    if "reminder_sent_at" not in columns:
-        op.add_column(
-            "appointments",
-            sa.Column("reminder_sent_at", sa.DateTime(timezone=True), nullable=True),
-        )
+    op.add_column(
+        "appointments",
+        sa.Column("reminder_sent_at", sa.DateTime(timezone=True), nullable=True),
+    )
 
-    # ── businesses: owner notification number ────────────────────────────────
-    columns = [col["name"] for col in inspector.get_columns("businesses")]
-    if "owner_whatsapp" not in columns:
-        op.add_column(
-            "businesses",
-            sa.Column("owner_whatsapp", sa.String(20), nullable=True),
-        )
+    op.add_column(
+        "businesses",
+        sa.Column("owner_whatsapp", sa.String(20), nullable=True),
+    )
 
-    # ── human_transfers: escalation records ──────────────────────────────────
-    # Check if table already exists (idempotent)
-    tables = inspector.get_table_names()
-    if "human_transfers" not in tables:
-        op.create_table(
-            "human_transfers",
-            sa.Column("id", UUID(as_uuid=True), primary_key=True),
-            sa.Column(
-                "tenant_id",
-                UUID(as_uuid=True),
-                sa.ForeignKey("tenants.id", ondelete="CASCADE"),
-                nullable=False,
-                index=True,
-            ),
-            sa.Column(
-                "business_id",
-                UUID(as_uuid=True),
-                sa.ForeignKey("businesses.id", ondelete="CASCADE"),
-                nullable=False,
-                index=True,
-            ),
-            sa.Column(
-                "conversation_id",
-                UUID(as_uuid=True),
-                sa.ForeignKey("conversations.id", ondelete="CASCADE"),
-                nullable=False,
-                index=True,
-            ),
-            sa.Column(
-                "client_id",
-                UUID(as_uuid=True),
-                sa.ForeignKey("clients.id"),
-                nullable=False,
-                index=True,
-            ),
-            sa.Column("reason", sa.Text, nullable=True),
-            sa.Column("context_snapshot", JSONB, nullable=False, server_default="'[]'"),
-            sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
-            sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("resolved_by_id", UUID(as_uuid=True), nullable=True),
-            sa.Column(
-                "created_at",
-                sa.DateTime(timezone=True),
-                nullable=False,
-                server_default=sa.text("now()"),
-            ),
-            sa.Column(
-                "updated_at",
-                sa.DateTime(timezone=True),
-                nullable=False,
-                server_default=sa.text("now()"),
-            ),
-        )
-        op.create_index("ix_human_transfers_status", "human_transfers", ["status"])
+    op.create_table(
+        "human_transfers",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "tenant_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "business_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("businesses.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "conversation_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("conversations.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "client_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("clients.id"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column("reason", sa.Text, nullable=True),
+        sa.Column("context_snapshot", JSONB, nullable=False, server_default=sa.text("'[]'")),
+        sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
+        sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("resolved_by_id", UUID(as_uuid=True), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+    )
+    op.create_index("ix_human_transfers_status", "human_transfers", ["status"])
 
 
 def downgrade() -> None:
-    inspector = sa.inspect(op.get_bind())
-    tables = inspector.get_table_names()
-    if "human_transfers" in tables:
-        op.drop_index("ix_human_transfers_status", table_name="human_transfers")
-        op.drop_table("human_transfers")
-
-    columns = [col["name"] for col in inspector.get_columns("businesses")]
-    if "owner_whatsapp" in columns:
-        op.drop_column("businesses", "owner_whatsapp")
-
-    columns = [col["name"] for col in inspector.get_columns("appointments")]
-    if "reminder_sent_at" in columns:
-        op.drop_column("appointments", "reminder_sent_at")
+    op.drop_index("ix_human_transfers_status", table_name="human_transfers")
+    op.drop_table("human_transfers")
+    op.drop_column("businesses", "owner_whatsapp")
+    op.drop_column("appointments", "reminder_sent_at")

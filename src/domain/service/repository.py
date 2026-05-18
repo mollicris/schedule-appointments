@@ -35,3 +35,11 @@ class ServiceRepository(Protocol):
     async def delete(self, service_id: UUID) -> bool:
         """Soft delete a service (returns True if found, False otherwise)."""
         ...
+
+    async def list_professional_ids(self, service_id: UUID) -> list[UUID]:
+        """Return the IDs of professionals that can perform this service."""
+        ...
+
+    async def set_professionals(self, service_id: UUID, professional_ids: list[UUID]) -> None:
+        """Replace the set of professionals assigned to a service."""
+        ...

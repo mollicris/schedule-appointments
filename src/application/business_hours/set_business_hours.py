@@ -87,17 +87,34 @@ class SetBusinessHoursUseCase(UseCase[SetBusinessHoursInput, SetBusinessHoursOut
                     close_at=h.close_at,
                     is_closed=h.is_closed,
                 )
-                for h in sorted(all_hours, key=lambda x: x.day_of_week)
+                for h in all_hours
             ],
         )
 
     def _validate_input(self, data: SetBusinessHoursInput) -> None:
         if not data.schedule:
             raise ValidationError("At least one day schedule is required")
-        seen_days: set[int] = set()
+
+        # Group by day_of_week to validate multiple ranges per day
+        from collections import defaultdict
+        day_groups: dict[int, list[DayScheduleInput]] = defaultdict(list)
+
         for day in data.schedule:
-            if day.day_of_week in seen_days:
-                raise ValidationError(
-                    f"Duplicate entry for day_of_week={day.day_of_week}"
-                )
-            seen_days.add(day.day_of_week)
+            day_groups[day.day_of_week].append(day)
+
+        # Validate each day has valid ranges
+        for day_of_week, entries in day_groups.items():
+            if day_of_week not in range(7):
+                raise ValidationError(f"day_of_week must be 0–6, got {day_of_week}")
+
+            # Check for overlapping time ranges within a day
+            non_closed = [e for e in entries if not e.is_closed]
+            for i, range1 in enumerate(non_closed):
+                for range2 in non_closed[i+1:]:
+                    # Check if ranges overlap
+                    if not (range1.close_at <= range2.open_at or range2.close_at <= range1.open_at):
+                        raise ValidationError(
+                            f"Overlapping time ranges for day {day_of_week}: "
+                            f"{range1.open_at}-{range1.close_at} overlaps with "
+                            f"{range2.open_at}-{range2.close_at}"
+                        )

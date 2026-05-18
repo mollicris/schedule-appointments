@@ -22,6 +22,7 @@ class GetServiceOutput:
     duration_minutes: int
     price: int | None
     is_active: bool
+    professional_ids: list[UUID]
 
 
 class GetServiceUseCase(UseCase[GetServiceInput, GetServiceOutput]):
@@ -36,6 +37,8 @@ class GetServiceUseCase(UseCase[GetServiceInput, GetServiceOutput]):
         if not service:
             raise NotFoundError(f"Service {input_data.service_id} not found")
 
+        professional_ids = await self._services.list_professional_ids(service.id)
+
         return GetServiceOutput(
             service_id=service.id,
             business_id=service.business_id,
@@ -44,4 +47,5 @@ class GetServiceUseCase(UseCase[GetServiceInput, GetServiceOutput]):
             duration_minutes=service.duration_minutes,
             price=service.price,
             is_active=service.is_active,
+            professional_ids=professional_ids,
         )

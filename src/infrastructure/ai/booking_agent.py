@@ -30,6 +30,7 @@ class AgentInput:
     history: list[Message]       # recent conversation messages (chronological)
     user_message: str
     tool_ctx: ToolContext
+    industry: str = ""
 
 
 class BookingAgent:
@@ -51,6 +52,7 @@ class BookingAgent:
             services=inp.services,
             client_name=inp.client_name,
             is_returning_client=inp.is_returning_client,
+            industry=inp.industry,
         )
 
         # Convert stored Message objects → Anthropic message dicts

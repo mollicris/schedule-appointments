@@ -43,3 +43,7 @@ class ProfessionalRepository(Protocol):
     async def delete(self, professional_id: UUID) -> bool:
         """Soft delete a professional (returns True if found, False otherwise)."""
         ...
+
+    async def list_by_service(self, service_id: UUID) -> list[Professional]:
+        """List active professionals that can perform the given service."""
+        ...

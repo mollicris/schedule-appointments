@@ -20,11 +20,13 @@ from src.application.shared.unit_of_work import UnitOfWork
 from src.domain.appointment.repository import AppointmentRepository
 from src.domain.business_hours.repository import BusinessHourRepository
 from src.domain.client.repository import ClientRepository
+from src.domain.professional.repository import ProfessionalRepository
 from src.domain.service.repository import ServiceRepository
 from src.presentation.dependencies import (
     get_appointment_repository,
     get_business_hours_repository,
     get_client_repository,
+    get_professional_repository,
     get_service_repository,
     get_unit_of_work,
 )
@@ -65,8 +67,11 @@ class AppointmentDetailSchema(BaseModel):
 class AppointmentSummarySchema(BaseModel):
     appointment_id: UUID
     service_id: UUID
+    service_name: str
     client_id: UUID
+    client_name: str
     professional_id: UUID | None
+    professional_name: str | None = None
     scheduled_at: datetime
     duration_minutes: int
     ends_at: datetime
@@ -99,12 +104,14 @@ async def book_appointment(
     appointments: Annotated[AppointmentRepository, Depends(get_appointment_repository)],
     services: Annotated[ServiceRepository, Depends(get_service_repository)],
     clients: Annotated[ClientRepository, Depends(get_client_repository)],
+    professionals: Annotated[ProfessionalRepository, Depends(get_professional_repository)],
     uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
 ) -> SuccessResponse:
     use_case = BookAppointmentUseCase(
         appointments=appointments,
         services=services,
         clients=clients,
+        professionals=professionals,
         uow=uow,
     )
     output = await use_case.execute(BookAppointmentInput(
@@ -135,7 +142,6 @@ async def book_appointment(
             cancelled_at=None,
             created_at=output.scheduled_at,
         ),
-        status_code=status.HTTP_201_CREATED,
     )
 
 
@@ -217,9 +223,17 @@ async def list_appointments(
     on_date: date | None = Query(default=None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    appointments: AppointmentRepository = Depends(get_appointment_repository),
+    appointments: Annotated[AppointmentRepository, Depends(get_appointment_repository)] = ...,
+    clients: Annotated[ClientRepository, Depends(get_client_repository)] = ...,
+    services: Annotated[ServiceRepository, Depends(get_service_repository)] = ...,
+    professionals: Annotated[ProfessionalRepository, Depends(get_professional_repository)] = ...,
 ) -> PaginatedResponse:
-    use_case = ListAppointmentsUseCase(appointments=appointments)
+    use_case = ListAppointmentsUseCase(
+        appointments=appointments,
+        clients=clients,
+        services=services,
+        professionals=professionals,
+    )
     output = await use_case.execute(ListAppointmentsInput(
         business_id=business_id,
         on_date=on_date,
@@ -231,8 +245,11 @@ async def list_appointments(
             AppointmentSummarySchema(
                 appointment_id=a.appointment_id,
                 service_id=a.service_id,
+                service_name=a.service_name,
                 client_id=a.client_id,
+                client_name=a.client_name,
                 professional_id=a.professional_id,
+                professional_name=a.professional_name,
                 scheduled_at=a.scheduled_at,
                 duration_minutes=a.duration_minutes,
                 ends_at=a.ends_at,

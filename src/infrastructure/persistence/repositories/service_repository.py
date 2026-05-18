@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.shared.tenant_context import get_current_tenant
@@ -10,7 +10,7 @@ from src.domain.service.service import Service
 from src.domain.service.repository import ServiceRepository
 from src.domain.shared.errors import TenantIsolationError
 from src.infrastructure.persistence.mappers.service_mapper import ServiceMapper
-from src.infrastructure.persistence.models import ServiceModel
+from src.infrastructure.persistence.models import ServiceModel, ServiceProfessionalModel
 
 
 class ServiceRepositoryImpl(ServiceRepository):
@@ -103,3 +103,38 @@ class ServiceRepositoryImpl(ServiceRepository):
         row.is_active = False
         await self._session.flush()
         return True
+
+    async def list_professional_ids(self, service_id: UUID) -> list[UUID]:
+        tenant = get_current_tenant()
+        stmt = select(ServiceProfessionalModel.professional_id).where(
+            and_(
+                ServiceProfessionalModel.service_id == service_id,
+                ServiceProfessionalModel.tenant_id == tenant.tenant_id,
+            )
+        )
+        rows = await self._session.scalars(stmt)
+        return list(rows)
+
+    async def set_professionals(self, service_id: UUID, professional_ids: list[UUID]) -> None:
+        tenant = get_current_tenant()
+
+        # Delete existing assignments for this service
+        await self._session.execute(
+            sa_delete(ServiceProfessionalModel).where(
+                and_(
+                    ServiceProfessionalModel.service_id == service_id,
+                    ServiceProfessionalModel.tenant_id == tenant.tenant_id,
+                )
+            )
+        )
+
+        # Insert the new set (deduplicate)
+        for pid in set(professional_ids):
+            self._session.add(
+                ServiceProfessionalModel(
+                    tenant_id=tenant.tenant_id,
+                    service_id=service_id,
+                    professional_id=pid,
+                )
+            )
+        await self._session.flush()

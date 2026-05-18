@@ -31,6 +31,11 @@ from src.application.business.update_business import (
     UpdateBusinessOutput,
     UpdateBusinessUseCase,
 )
+from src.application.business.update_business_whatsapp import (
+    UpdateBusinessWhatsappInput,
+    UpdateBusinessWhatsappOutput,
+    UpdateBusinessWhatsappUseCase,
+)
 from src.application.shared.unit_of_work import UnitOfWork
 from src.domain.business.repository import BusinessRepository
 from src.presentation.dependencies import (
@@ -62,6 +67,22 @@ class BusinessDetailResponse(BaseModel):
     description: str | None
     timezone: str
     is_active: bool
+    whatsapp_phone_number_id: str | None = None
+    owner_whatsapp: str | None = None
+    has_whatsapp_app_secret: bool = False
+
+
+class UpdateWhatsappRequest(BaseModel):
+    phone_number_id: str | None = Field(default=None, max_length=64)
+    app_secret: str | None = Field(default=None, max_length=255)
+    owner_whatsapp: str | None = Field(default=None, max_length=20)
+
+
+class WhatsappConfigResponse(BaseModel):
+    business_id: UUID
+    whatsapp_phone_number_id: str | None
+    owner_whatsapp: str | None
+    has_whatsapp_app_secret: bool
 
 
 class BusinessSummaryResponse(BaseModel):
@@ -148,6 +169,9 @@ async def get_business(
             description=output.description,
             timezone=output.timezone,
             is_active=output.is_active,
+            whatsapp_phone_number_id=output.whatsapp_phone_number_id,
+            owner_whatsapp=output.owner_whatsapp,
+            has_whatsapp_app_secret=output.has_whatsapp_app_secret,
         ),
     )
 
@@ -218,6 +242,39 @@ async def update_business(
             slug=output.slug,
             phone=output.phone,
             is_active=True,
+        ),
+    )
+
+
+@router.patch(
+    "/{business_id}/whatsapp",
+    status_code=status.HTTP_200_OK,
+    summary="Configure WhatsApp integration",
+    description="Set or update the WhatsApp Phone Number ID, app secret, and owner WhatsApp number for a business.",
+)
+async def update_business_whatsapp(
+    business_id: UUID,
+    payload: UpdateWhatsappRequest,
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
+    uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> SuccessResponse:
+    use_case = UpdateBusinessWhatsappUseCase(businesses=businesses, uow=uow)
+    output: UpdateBusinessWhatsappOutput = await use_case.execute(
+        UpdateBusinessWhatsappInput(
+            business_id=business_id,
+            phone_number_id=payload.phone_number_id,
+            app_secret=payload.app_secret,
+            owner_whatsapp=payload.owner_whatsapp,
+        )
+    )
+    return success_response(
+        message="WhatsApp configuration updated successfully",
+        code="WHATSAPP_CONFIGURED",
+        data=WhatsappConfigResponse(
+            business_id=output.business_id,
+            whatsapp_phone_number_id=output.whatsapp_phone_number_id,
+            owner_whatsapp=output.owner_whatsapp,
+            has_whatsapp_app_secret=output.has_whatsapp_app_secret,
         ),
     )
 

@@ -31,9 +31,16 @@ from src.application.service.update_service import (
     UpdateServiceOutput,
     UpdateServiceUseCase,
 )
+from src.application.service.assign_professionals_to_service import (
+    AssignProfessionalsToServiceInput,
+    AssignProfessionalsToServiceOutput,
+    AssignProfessionalsToServiceUseCase,
+)
 from src.application.shared.unit_of_work import UnitOfWork
+from src.domain.professional.repository import ProfessionalRepository
 from src.domain.service.repository import ServiceRepository
 from src.presentation.dependencies import (
+    get_professional_repository,
     get_service_repository,
     get_unit_of_work,
 )
@@ -64,6 +71,7 @@ class ServiceDetailResponse(BaseModel):
     duration_minutes: int
     price: int | None
     is_active: bool
+    professional_ids: list[UUID] = []
 
 
 class ServiceSummaryResponse(BaseModel):
@@ -72,6 +80,16 @@ class ServiceSummaryResponse(BaseModel):
     duration_minutes: int
     price: int | None
     is_active: bool
+    professional_ids: list[UUID] = []
+
+
+class AssignProfessionalsRequest(BaseModel):
+    professional_ids: list[UUID] = Field(default_factory=list)
+
+
+class AssignProfessionalsResponseData(BaseModel):
+    service_id: UUID
+    professional_ids: list[UUID]
 
 
 class CreateServiceResponseData(BaseModel):
@@ -110,7 +128,6 @@ async def create_service(
             name=output.name,
             duration_minutes=output.duration_minutes,
         ),
-        status_code=status.HTTP_201_CREATED,
     )
 
 
@@ -139,6 +156,7 @@ async def get_service(
             duration_minutes=output.duration_minutes,
             price=output.price,
             is_active=output.is_active,
+            professional_ids=output.professional_ids,
         ),
     )
 
@@ -172,6 +190,7 @@ async def list_services(
                 duration_minutes=s.duration_minutes,
                 price=s.price,
                 is_active=s.is_active,
+                professional_ids=s.professional_ids,
             )
             for s in output.services
         ],
@@ -215,6 +234,39 @@ async def update_service(
             duration_minutes=output.duration_minutes,
             price=output.price,
             is_active=True,
+        ),
+    )
+
+
+@router.put(
+    "/{service_id}/professionals",
+    status_code=status.HTTP_200_OK,
+    summary="Assign professionals to a service",
+    description="Replace the set of professionals that can perform this service.",
+)
+async def assign_professionals(
+    business_id: UUID,
+    service_id: UUID,
+    payload: AssignProfessionalsRequest,
+    services: Annotated[ServiceRepository, Depends(get_service_repository)],
+    professionals: Annotated[ProfessionalRepository, Depends(get_professional_repository)],
+    uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> SuccessResponse:
+    use_case = AssignProfessionalsToServiceUseCase(
+        services=services, professionals=professionals, uow=uow
+    )
+    output: AssignProfessionalsToServiceOutput = await use_case.execute(
+        AssignProfessionalsToServiceInput(
+            service_id=service_id,
+            professional_ids=payload.professional_ids,
+        )
+    )
+    return success_response(
+        message="Professionals assigned to service successfully",
+        code="SERVICE_PROFESSIONALS_ASSIGNED",
+        data=AssignProfessionalsResponseData(
+            service_id=output.service_id,
+            professional_ids=output.professional_ids,
         ),
     )
 

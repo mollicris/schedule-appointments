@@ -50,6 +50,6 @@ class GetBusinessHoursUseCase(UseCase[GetBusinessHoursInput, GetBusinessHoursOut
                     close_at=h.close_at,
                     is_closed=h.is_closed,
                 )
-                for h in sorted(hours, key=lambda x: x.day_of_week)
+                for h in hours
             ],
         )

@@ -24,6 +24,9 @@ class GetBusinessOutput:
     description: str | None
     timezone: str
     is_active: bool
+    whatsapp_phone_number_id: str | None = None
+    owner_whatsapp: str | None = None
+    has_whatsapp_app_secret: bool = False
 
 
 class GetBusinessUseCase(UseCase[GetBusinessInput, GetBusinessOutput]):
@@ -48,4 +51,7 @@ class GetBusinessUseCase(UseCase[GetBusinessInput, GetBusinessOutput]):
             description=business.description,
             timezone=business.timezone,
             is_active=business.is_active,
+            whatsapp_phone_number_id=business.whatsapp_phone_number_id,
+            owner_whatsapp=business.owner_whatsapp,
+            has_whatsapp_app_secret=bool(business.whatsapp_app_secret),
         )

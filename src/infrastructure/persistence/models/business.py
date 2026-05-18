@@ -55,7 +55,7 @@ class ProfessionalModel(Base):
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
     tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     business_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(127), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -65,6 +65,17 @@ class ProfessionalModel(Base):
     )
 
 
+class ServiceProfessionalModel(Base):
+    """Many-to-many association: which professionals can perform which services."""
+
+    __tablename__ = "service_professionals"
+
+    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    service_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
+    professional_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("professionals.id", ondelete="CASCADE"), primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class BusinessHourModel(Base):
     __tablename__ = "business_hours"
 
@@ -72,6 +83,7 @@ class BusinessHourModel(Base):
     tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     business_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
     day_of_week: Mapped[str] = mapped_column(String(1), nullable=False)  # 0 = Monday, 6 = Sunday
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 1st range, 2nd range, etc.
     open_at: Mapped[time] = mapped_column(Time, nullable=False)
     close_at: Mapped[time] = mapped_column(Time, nullable=False)
     is_closed: Mapped[bool] = mapped_column(default=False)  # full day off
@@ -81,5 +93,5 @@ class BusinessHourModel(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("business_id", "day_of_week", name="uq_business_hours_business_day"),
+        UniqueConstraint("business_id", "day_of_week", "sequence", name="uq_business_hours_business_day_sequence"),
     )

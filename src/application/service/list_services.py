@@ -21,6 +21,7 @@ class ServiceSummary:
     duration_minutes: int
     price: int | None
     is_active: bool
+    professional_ids: list[UUID]
 
 
 @dataclass(frozen=True)
@@ -52,17 +53,23 @@ class ListServicesUseCase(UseCase[ListServicesInput, ListServicesOutput]):
         )
         total = await self._services.count_by_business(business_id=input_data.business_id)
 
-        return ListServicesOutput(
-            services=[
+        # Fetch professional assignments for each service in this page
+        summaries = []
+        for s in services:
+            professional_ids = await self._services.list_professional_ids(s.id)
+            summaries.append(
                 ServiceSummary(
                     service_id=s.id,
                     name=s.name,
                     duration_minutes=s.duration_minutes,
                     price=s.price,
                     is_active=s.is_active,
+                    professional_ids=professional_ids,
                 )
-                for s in services
-            ],
+            )
+
+        return ListServicesOutput(
+            services=summaries,
             total=total,
             page=page,
             page_size=page_size,

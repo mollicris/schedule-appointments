@@ -43,9 +43,9 @@ router = APIRouter(prefix="/businesses/{business_id}/professionals", tags=["prof
 
 
 class CreateProfessionalRequest(BaseModel):
-    user_id: UUID
     name: str = Field(min_length=1, max_length=127)
     phone: str | None = Field(default=None, max_length=20)
+    user_id: UUID | None = None
 
 
 class UpdateProfessionalRequest(BaseModel):
@@ -56,7 +56,7 @@ class UpdateProfessionalRequest(BaseModel):
 class ProfessionalDetailResponse(BaseModel):
     professional_id: UUID
     business_id: UUID
-    user_id: UUID
+    user_id: UUID | None
     name: str
     phone: str | None
     is_active: bool
@@ -64,7 +64,7 @@ class ProfessionalDetailResponse(BaseModel):
 
 class ProfessionalSummaryResponse(BaseModel):
     professional_id: UUID
-    user_id: UUID
+    user_id: UUID | None
     name: str
     phone: str | None
     is_active: bool
@@ -86,9 +86,9 @@ async def create_professional(
     output: CreateProfessionalOutput = await use_case.execute(
         CreateProfessionalInput(
             business_id=business_id,
-            user_id=payload.user_id,
             name=payload.name,
             phone=payload.phone,
+            user_id=payload.user_id,
         )
     )
     return success_response(
@@ -188,7 +188,7 @@ async def update_professional(
         code="PROFESSIONAL_UPDATED",
         data=ProfessionalSummaryResponse(
             professional_id=output.professional_id,
-            user_id=UUID(int=0),  # Not returned by update — use GET for full details
+            user_id=None,
             name=output.name,
             phone=output.phone,
             is_active=True,

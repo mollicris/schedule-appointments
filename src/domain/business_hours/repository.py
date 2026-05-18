@@ -10,15 +10,18 @@ class BusinessHourRepository(Protocol):
     """Repository port for BusinessHour aggregate.
 
     All queries are scoped to a single tenant (enforced by RLS).
-    A business has at most one record per day_of_week.
+    A business can have multiple ranges per day_of_week (e.g., lunch breaks).
     """
 
     async def get_by_business(self, business_id: UUID) -> list[BusinessHour]:
-        """Get all 7 day-entries for a business (may return fewer if not yet set)."""
+        """Get all ranges for a business across all days (may return fewer if not yet set)."""
         ...
 
-    async def get_by_business_and_day(self, business_id: UUID, day_of_week: int) -> BusinessHour | None:
-        """Get the schedule for one specific day."""
+    async def get_by_business_and_day(self, business_id: UUID, day_of_week: int) -> list[BusinessHour]:
+        """Get all time ranges for one specific day, ordered by sequence.
+
+        Returns empty list if day is closed or not configured.
+        """
         ...
 
     async def upsert(self, business_hour: BusinessHour) -> None:

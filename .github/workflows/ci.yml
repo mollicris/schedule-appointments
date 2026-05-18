@@ -1,4 +1,4 @@
-name: Backend CI
+name: Backend CI/CD
 
 on:
   push:
@@ -9,6 +9,13 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  PROJECT_ID: agentappointment
+  REGION: southamerica-west1
+  SERVICE: backendagent
+  REGISTRY: southamerica-west1-docker.pkg.dev
+  IMAGE: southamerica-west1-docker.pkg.dev/agentappointment/backend-images/agente-citas
 
 jobs:
   lint-and-typecheck:
@@ -38,7 +45,7 @@ jobs:
 
       - name: Typecheck with mypy
         run: uv run mypy src
-        continue-on-error: true  # remove once domain stubs are typed cleanly
+        continue-on-error: true
 
   test:
     name: Tests
@@ -93,4 +100,72 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -q
-        continue-on-error: true  # remove once at least one test exists
+        continue-on-error: true
+
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Build and push image
+        run: |
+          docker build \
+            -t "${{ env.IMAGE }}:${{ github.sha }}" \
+            -t "${{ env.IMAGE }}:latest" \
+            .
+          docker push "${{ env.IMAGE }}:${{ github.sha }}"
+          docker push "${{ env.IMAGE }}:latest"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image "${{ env.IMAGE }}:${{ github.sha }}" \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --add-cloudsql-instances agentappointment:southamerica-west1:agent-appointment \
+            --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+            --set-env-vars "REDIS_URL=" \
+            --set-env-vars "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" \
+            --set-env-vars "JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}" \
+            --set-env-vars "WHATSAPP_VERIFY_TOKEN=${{ secrets.WHATSAPP_VERIFY_TOKEN }}" \
+            --set-env-vars "WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}" \
+            --set-env-vars "WHATSAPP_PHONE_NUMBER_ID=${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}" \
+            --set-env-vars "WHATSAPP_APP_SECRET=${{ secrets.WHATSAPP_APP_SECRET }}" \
+            --set-env-vars "APP_ENV=production" \
+            --set-env-vars "APP_CORS_ORIGINS=${{ secrets.APP_CORS_ORIGINS }}" \
+            --set-env-vars "EMAIL_PROVIDER=smtp" \
+            --set-env-vars "EMAIL_FROM=${{ secrets.EMAIL_FROM }}" \
+            --set-env-vars "EMAIL_LANDING_BASE_URL=${{ secrets.EMAIL_LANDING_BASE_URL }}" \
+            --set-env-vars "SMTP_HOST=smtp.gmail.com" \
+            --set-env-vars "SMTP_PORT=587" \
+            --set-env-vars "SMTP_USE_TLS=true" \
+            --set-env-vars "SMTP_USER=${{ secrets.SMTP_USER }}" \
+            --set-env-vars "SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}" \
+            --min-instances 1 \
+            --max-instances 1 \
+            --memory 512Mi \
+            --timeout 60
+
+      - name: Show service URL
+        run: |
+          gcloud run services describe ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --format "value(status.url)"

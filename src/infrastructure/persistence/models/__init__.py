@@ -14,6 +14,7 @@ from src.infrastructure.persistence.models.business import (
     BusinessModel,
     ProfessionalModel,
     ServiceModel,
+    ServiceProfessionalModel,
 )
 from src.infrastructure.persistence.models.client import ClientModel
 from src.infrastructure.persistence.models.conversation import ConversationModel, HumanTransferModel, MessageModel
@@ -26,6 +27,7 @@ __all__ = [
     "BusinessModel",
     "ServiceModel",
     "ProfessionalModel",
+    "ServiceProfessionalModel",
     "BusinessHourModel",
     "AppointmentModel",
     "ClientModel",

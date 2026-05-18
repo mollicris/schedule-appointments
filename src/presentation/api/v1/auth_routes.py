@@ -15,11 +15,13 @@ from src.application.identity.logout import LogoutInput, LogoutUseCase
 from src.application.identity.refresh_token import RefreshTokenInput, RefreshTokenUseCase
 from src.application.shared.tenant_context import get_current_tenant
 from src.domain.identity.repository import UserRepository
+from src.domain.tenant.repository import TenantRepository
 from src.infrastructure.adapters.jwt_service import JWTService
 from src.infrastructure.adapters.password_hasher import Argon2PasswordHasher
 from src.presentation.dependencies import (
     get_jwt_service,
     get_password_hasher,
+    get_tenant_repository,
     get_user_repository,
 )
 
@@ -44,6 +46,7 @@ class MeResponse(BaseModel):
     tenant_id: UUID
     email: str
     role: str
+    tenant_status: str
 
 
 class TokenResponse(BaseModel):
@@ -131,6 +134,7 @@ async def logout(payload: LogoutRequest) -> None:
 )
 async def me(
     users: Annotated[UserRepository, Depends(get_user_repository)],
+    tenants: Annotated[TenantRepository, Depends(get_tenant_repository)],
 ) -> MeResponse:
     ctx = get_current_tenant()
     if ctx.user_id is None:
@@ -138,9 +142,12 @@ async def me(
     user = await users.get_by_id(ctx.user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    tenant = await tenants.get_by_id(ctx.tenant_id)
+    tenant_status = tenant.status.value if tenant else "unknown"
     return MeResponse(
         user_id=user.id,
         tenant_id=user.tenant_id,
         email=user.email,
         role=user.role.value,
+        tenant_status=tenant_status,
     )

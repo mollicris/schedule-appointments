@@ -20,7 +20,7 @@ class Professional(TenantAwareEntity):
     """
 
     business_id: UUID = UUID(int=0)
-    user_id: UUID = UUID(int=0)
+    user_id: UUID | None = None
     name: str = ""
     phone: str | None = None
     is_active: bool = True
@@ -31,8 +31,8 @@ class Professional(TenantAwareEntity):
         *,
         tenant_id: UUID,
         business_id: UUID,
-        user_id: UUID,
         name: str,
+        user_id: UUID | None = None,
         phone: str | None = None,
     ) -> Professional:
         """Factory for creating a new professional."""

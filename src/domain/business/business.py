@@ -104,6 +104,19 @@ class Business(TenantAwareEntity):
 
         self.updated_at = datetime.utcnow()
 
+    def configure_whatsapp(
+        self,
+        *,
+        phone_number_id: str | None,
+        app_secret: str | None,
+        owner_whatsapp: str | None,
+    ) -> None:
+        """Set or clear WhatsApp integration credentials."""
+        self.whatsapp_phone_number_id = phone_number_id.strip() if phone_number_id else None
+        self.whatsapp_app_secret = app_secret.strip() if app_secret else None
+        self.owner_whatsapp = owner_whatsapp.strip() if owner_whatsapp else None
+        self.updated_at = datetime.utcnow()
+
     def deactivate(self) -> None:
         """Soft delete: mark business as inactive."""
         if not self.is_active:

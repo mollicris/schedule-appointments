@@ -40,16 +40,19 @@ class UpdateDayHoursUseCase(UseCase[UpdateDayHoursInput, UpdateDayHoursOutput]):
 
     async def execute(self, input_data: UpdateDayHoursInput) -> UpdateDayHoursOutput:
         async with self._uow:
-            bh = await self._business_hours.get_by_business_and_day(
+            # Get all ranges for this day (now supports multiple ranges)
+            ranges = await self._business_hours.get_by_business_and_day(
                 business_id=input_data.business_id,
                 day_of_week=input_data.day_of_week,
             )
-            if not bh:
+            if not ranges:
                 raise NotFoundError(
                     f"No schedule found for business {input_data.business_id} "
                     f"on day {input_data.day_of_week}"
                 )
 
+            # Update the first range (sequence 1)
+            bh = ranges[0]
             bh.update(
                 open_at=input_data.open_at,
                 close_at=input_data.close_at,

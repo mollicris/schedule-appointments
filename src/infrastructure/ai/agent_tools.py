@@ -160,6 +160,7 @@ class ToolContext:
     client_name: str
     client_whatsapp: str
     conversation_id: UUID
+    business_timezone: str
     services: ServiceRepository
     appointments: AppointmentRepository
     professionals: ProfessionalRepository
@@ -211,8 +212,21 @@ async def _get_services(ctx: ToolContext) -> str:
 
 async def _get_professionals(inputs: dict, ctx: ToolContext) -> str:
     service_id_raw = inputs.get("service_id")
-    # ProfessionalRepository.list_by_business doesn't filter by service yet — list all
-    items = await ctx.professionals.list_by_business(ctx.business_id)
+    if service_id_raw:
+        try:
+            service_uuid = UUID(service_id_raw)
+            # First check if the service has explicit professional assignments
+            assigned_ids = await ctx.services.list_professional_ids(service_uuid)
+            if assigned_ids:
+                items = await ctx.professionals.list_by_service(service_uuid)
+            else:
+                # No restrictions → any active professional can perform it
+                items = await ctx.professionals.list_by_business(ctx.business_id)
+        except ValueError:
+            items = await ctx.professionals.list_by_business(ctx.business_id)
+    else:
+        items = await ctx.professionals.list_by_business(ctx.business_id)
+
     return json.dumps([
         {"id": str(p.id), "name": p.name}
         for p in items
@@ -241,6 +255,7 @@ async def _check_availability(inputs: dict, ctx: ToolContext) -> str:
         service_id=UUID(inputs["service_id"]),
         on_date=on_date,
         professional_id=professional_id,
+        business_timezone=ctx.business_timezone,
     ))
     return json.dumps({
         "date": output.date.isoformat(),
@@ -268,6 +283,7 @@ async def _book_appointment(inputs: dict, ctx: ToolContext) -> str:
         appointments=ctx.appointments,
         services=ctx.services,
         clients=ctx.clients,
+        professionals=ctx.professionals,
         uow=ctx.uow,
     )
     output = await uc.execute(BookAppointmentInput(

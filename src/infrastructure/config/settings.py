@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # is an unusable placeholder so that `import` succeeds without secrets,
     # but `create_async_engine` will fail fast if it is ever used as-is.
     database_url: str = "postgresql+asyncpg://localhost/agente_citas"
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = ""
     redis_cache_ttl: int = 60
 
     anthropic_api_key: str = ""
@@ -57,6 +57,22 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field(default="change-me", min_length=8)
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60
+
+    # ── Email ────────────────────────────────────────────────────────────────
+    # email_provider: "console" | "resend" | "smtp"
+    email_provider: str = "console"
+    email_from: str = "Agente Citas <noreply@agentecitas.com>"
+    email_landing_base_url: str = "http://localhost:5174"
+
+    # Resend
+    resend_api_key: str = ""
+
+    # SMTP
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
 
     @property
     def app_cors_origins_list(self) -> list[str]:

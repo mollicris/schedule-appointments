@@ -22,11 +22,15 @@ from src.domain.identity.repository import UserRepository
 from src.domain.professional.repository import ProfessionalRepository
 from src.domain.service.repository import ServiceRepository
 from src.domain.tenant.repository import TenantRepository
+from src.application.notifications.email_service import EmailService
 from src.infrastructure.adapters.jwt_service import JWTService
 from src.infrastructure.adapters.password_hasher import Argon2PasswordHasher
 from src.infrastructure.adapters.user_factory import UserFactoryImpl
 from src.infrastructure.adapters.verification_token_service import InMemoryVerificationTokenService
 from src.infrastructure.config.settings import get_settings
+from src.infrastructure.notifications.console_email_service import ConsoleEmailService
+from src.infrastructure.notifications.resend_email_service import ResendEmailService
+from src.infrastructure.notifications.smtp_email_service import SmtpEmailService
 from src.infrastructure.persistence.database import get_session_factory
 from src.infrastructure.persistence.repositories.appointment_repository import AppointmentRepositoryImpl
 from src.infrastructure.persistence.repositories.business_hour_repository import BusinessHourRepositoryImpl
@@ -41,6 +45,7 @@ from src.infrastructure.persistence.repositories.user_repository import UserRepo
 
 _verification_token_service: InMemoryVerificationTokenService | None = None
 _jwt_service: JWTService | None = None
+_email_service: EmailService | None = None
 
 
 def _get_verification_token_service() -> InMemoryVerificationTokenService:
@@ -48,6 +53,31 @@ def _get_verification_token_service() -> InMemoryVerificationTokenService:
     if _verification_token_service is None:
         _verification_token_service = InMemoryVerificationTokenService()
     return _verification_token_service
+
+
+def _get_email_service() -> EmailService:
+    global _email_service
+    if _email_service is None:
+        s = get_settings()
+        provider = s.email_provider.lower()
+        if provider == "resend":
+            if not s.resend_api_key:
+                raise RuntimeError("EMAIL_PROVIDER=resend but RESEND_API_KEY is not set")
+            _email_service = ResendEmailService(api_key=s.resend_api_key, from_address=s.email_from)
+        elif provider == "smtp":
+            if not s.smtp_user:
+                raise RuntimeError("EMAIL_PROVIDER=smtp but SMTP_USER is not set")
+            _email_service = SmtpEmailService(
+                host=s.smtp_host,
+                port=s.smtp_port,
+                user=s.smtp_user,
+                password=s.smtp_password,
+                from_address=s.email_from,
+                use_tls=s.smtp_use_tls,
+            )
+        else:
+            _email_service = ConsoleEmailService()
+    return _email_service
 
 
 def _get_jwt_service() -> JWTService:
@@ -80,6 +110,11 @@ def get_password_hasher() -> Argon2PasswordHasher:
 def get_verification_token_service() -> VerificationTokenService:
     """DI: VerificationTokenService."""
     return _get_verification_token_service()
+
+
+def get_email_service() -> EmailService:
+    """DI: EmailService — implementation selected by EMAIL_PROVIDER setting."""
+    return _get_email_service()
 
 
 def get_jwt_service() -> JWTService:

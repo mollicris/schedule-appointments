@@ -48,6 +48,7 @@ class ProcessInboundMessageInput:
     whatsapp_client: WhatsAppClient
     business: Business
     services: list[Service]
+    industry: str = ""
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,7 @@ class ProcessInboundMessageUseCase:
                 client_name=client.name,
                 client_whatsapp=client.whatsapp_number,
                 conversation_id=conversation.id,
+                business_timezone=input_data.business.timezone,
                 services=self._services,
                 appointments=self._appointments,
                 professionals=self._professionals,
@@ -191,6 +193,7 @@ class ProcessInboundMessageUseCase:
                 history=history,
                 user_message=input_data.message.content,
                 tool_ctx=tool_ctx,
+                industry=input_data.industry,
             )
             try:
                 reply_text = await self._agent.run(agent_input)

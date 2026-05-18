@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.application.notifications.email_service import EmailService
+from src.application.notifications.email_templates import verification_email
 from src.application.shared.unit_of_work import UnitOfWork
 from src.application.shared.use_case import UseCase
 from src.domain.shared.errors import ConflictError, ValidationError
 from src.domain.tenant.repository import TenantRepository
 from src.domain.tenant.tenant import Tenant
 from src.domain.tenant.value_objects import TenantSlug
+
+logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -75,6 +80,8 @@ class RegisterTenantUseCase(UseCase[RegisterTenantInput, RegisterTenantOutput]):
         password_hasher: PasswordHasher,
         verification_token_service: VerificationTokenService,
         user_factory: UserFactory,
+        email_service: EmailService,
+        landing_base_url: str = "http://localhost:5174",
         session: AsyncSession | None = None,
     ) -> None:
         self._tenants = tenants
@@ -82,6 +89,8 @@ class RegisterTenantUseCase(UseCase[RegisterTenantInput, RegisterTenantOutput]):
         self._hasher = password_hasher
         self._tokens = verification_token_service
         self._user_factory = user_factory
+        self._email_service = email_service
+        self._landing_base_url = landing_base_url
         self._session = session
 
     async def execute(self, input_data: RegisterTenantInput) -> RegisterTenantOutput:
@@ -119,6 +128,22 @@ class RegisterTenantUseCase(UseCase[RegisterTenantInput, RegisterTenantOutput]):
             verification_token = await self._tokens.issue_for(tenant.id)
 
             await self._uow.commit()
+
+        # Send verification email after commit — failure logs but does not roll back
+        try:
+            message = verification_email(
+                to=input_data.admin_email,
+                token=verification_token,
+                landing_base_url=self._landing_base_url,
+                tenant_name=input_data.name,
+            )
+            await self._email_service.send(message)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "Failed to send verification email to %s: %s",
+                input_data.admin_email,
+                exc,
+            )
 
         return RegisterTenantOutput(
             tenant_id=tenant.id,

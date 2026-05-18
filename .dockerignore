@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Secrets
+.env
+.env.*
+
+# Python cache
+__pycache__
+*.py[cod]
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Virtual environments
+.venv
+venv
+
+# Dev / docs
+.github
+*.md
+tests
+
+# IDE
+.vscode
+.idea

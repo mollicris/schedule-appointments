@@ -17,6 +17,7 @@ from src.application.conversation.process_inbound_message import (
     ProcessInboundMessageInput,
     ProcessInboundMessageUseCase,
 )
+from src.application.shared.tenant_context import TenantContext, set_current_tenant
 from src.application.shared.unit_of_work import UnitOfWork
 from src.domain.appointment.value_objects import AppointmentStatus
 from src.infrastructure.ai.booking_agent import BookingAgent
@@ -32,6 +33,7 @@ from src.infrastructure.persistence.repositories.conversation_repository import 
 from src.infrastructure.persistence.repositories.human_transfer_repository import HumanTransferRepositoryImpl
 from src.infrastructure.persistence.repositories.professional_repository import ProfessionalRepositoryImpl
 from src.infrastructure.persistence.repositories.service_repository import ServiceRepositoryImpl
+from src.infrastructure.persistence.repositories.tenant_repository import TenantRepositoryImpl
 
 log = structlog.get_logger(__name__)
 webhooks_router = APIRouter()
@@ -128,13 +130,16 @@ async def _handle_change(
             log.warning("whatsapp_unknown_phone_number_id", phone_number_id=phone_number_id)
             return
 
-        # 2. Verify HMAC-SHA256 signature
+        # 2. Set tenant context so all tenant-scoped repos work correctly
+        set_current_tenant(TenantContext(tenant_id=business.tenant_id))
+
+        # 3. Verify HMAC-SHA256 signature
         app_secret = business.whatsapp_app_secret or get_settings().whatsapp_app_secret
         if not _verify_signature(raw_body, app_secret, signature_header):
             log.warning("whatsapp_signature_invalid", business_id=str(business.id))
             return
 
-        # 3. Build all per-request repositories
+        # 4. Build all per-request repositories
         conversation_repo = ConversationRepositoryImpl(session)
         client_repo = ClientRepositoryImpl(session)
         service_repo = ServiceRepositoryImpl(session)
@@ -143,8 +148,11 @@ async def _handle_change(
         business_hour_repo = BusinessHourRepositoryImpl(session)
         human_transfer_repo = HumanTransferRepositoryImpl(session)
 
-        # 4. Load services list once (used in system prompt + ToolContext)
+        # 5. Load services and tenant industry
         services = await service_repo.list_by_business(business.id)
+        tenant_repo = TenantRepositoryImpl(session)
+        tenant = await tenant_repo.get_by_id(business.tenant_id)
+        industry = tenant.industry if tenant else ""
 
         class _SessionUoW(UnitOfWork):
             async def __aenter__(self): return self
@@ -176,7 +184,7 @@ async def _handle_change(
             uow=uow,
         )
 
-        # 5. Process each individual message
+        # 6. Process each individual message
         for msg in messages:
             msg_type = msg.get("type", "text")
             content, extra = _extract_content(msg, msg_type)
@@ -215,6 +223,7 @@ async def _handle_change(
                         whatsapp_client=wa_client,
                         business=business,
                         services=services,
+                        industry=industry,
                     )
                 )
             except Exception:

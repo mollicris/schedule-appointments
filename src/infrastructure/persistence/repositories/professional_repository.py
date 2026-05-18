@@ -10,7 +10,7 @@ from src.domain.professional.professional import Professional
 from src.domain.professional.repository import ProfessionalRepository
 from src.domain.shared.errors import TenantIsolationError
 from src.infrastructure.persistence.mappers.professional_mapper import ProfessionalMapper
-from src.infrastructure.persistence.models import ProfessionalModel
+from src.infrastructure.persistence.models import ProfessionalModel, ServiceProfessionalModel
 
 
 class ProfessionalRepositoryImpl(ProfessionalRepository):
@@ -122,3 +122,22 @@ class ProfessionalRepositoryImpl(ProfessionalRepository):
         row.is_active = False
         await self._session.flush()
         return True
+
+    async def list_by_service(self, service_id: UUID) -> list[Professional]:
+        tenant = get_current_tenant()
+        stmt = (
+            select(ProfessionalModel)
+            .join(
+                ServiceProfessionalModel,
+                ServiceProfessionalModel.professional_id == ProfessionalModel.id,
+            )
+            .where(
+                and_(
+                    ServiceProfessionalModel.service_id == service_id,
+                    ProfessionalModel.tenant_id == tenant.tenant_id,
+                    ProfessionalModel.is_active.is_(True),
+                )
+            )
+        )
+        rows = await self._session.scalars(stmt)
+        return [ProfessionalMapper.toPersistence(row) for row in rows if row]

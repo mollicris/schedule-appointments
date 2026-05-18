@@ -48,7 +48,7 @@ class DayScheduleRequest(BaseModel):
 
 
 class SetBusinessHoursRequest(BaseModel):
-    schedule: list[DayScheduleRequest] = Field(min_length=1, max_length=7)
+    schedule: list[DayScheduleRequest] = Field(min_length=1)
 
 
 class UpdateDayHoursRequest(BaseModel):

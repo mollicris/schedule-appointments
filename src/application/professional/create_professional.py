@@ -14,8 +14,8 @@ from src.domain.shared.errors import ConflictError, ValidationError
 @dataclass(frozen=True)
 class CreateProfessionalInput:
     business_id: UUID
-    user_id: UUID
     name: str
+    user_id: UUID | None = None
     phone: str | None = None
 
 
@@ -37,8 +37,7 @@ class CreateProfessionalUseCase(UseCase[CreateProfessionalInput, CreateProfessio
         tenant = get_current_tenant()
 
         async with self._uow:
-            # Prevent duplicates: one user per business
-            if await self._professionals.user_in_business_exists(
+            if input_data.user_id is not None and await self._professionals.user_in_business_exists(
                 user_id=input_data.user_id,
                 business_id=input_data.business_id,
             ):

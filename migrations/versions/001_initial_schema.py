@@ -22,7 +22,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # Enable pgvector extension for embeddings
-    op.execute("CREATE EXTENSION IF NOT EXISTS pgvector")
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     # Create tenants table (NOT tenant-aware, this IS the tenant)
     op.create_table(
@@ -313,4 +313,4 @@ def downgrade() -> None:
     op.drop_table("tenants")
 
     # Disable pgvector
-    op.execute("DROP EXTENSION IF EXISTS pgvector")
+    op.execute("DROP EXTENSION IF EXISTS vector")

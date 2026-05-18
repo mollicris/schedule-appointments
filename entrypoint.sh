@@ -1,11 +1,15 @@
 #!/bin/sh
 
 echo "=== Running database migrations ==="
-alembic upgrade head
+MIGRATION_OUTPUT=$(alembic upgrade head 2>&1)
 MIGRATION_EXIT=$?
 
+echo "$MIGRATION_OUTPUT"
+
 if [ $MIGRATION_EXIT -ne 0 ]; then
-    echo "=== WARNING: Migrations failed with exit code $MIGRATION_EXIT, starting app anyway ==="
+    echo "=== MIGRATION ERROR (exit $MIGRATION_EXIT) ==="
+    echo "$MIGRATION_OUTPUT"
+    echo "=== Starting app anyway ==="
 else
     echo "=== Migrations completed successfully ==="
 fi

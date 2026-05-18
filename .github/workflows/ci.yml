@@ -13,7 +13,7 @@ env:
   REGION: southamerica-west1
   SERVICE: backendagent
   REGISTRY: southamerica-west1-docker.pkg.dev
-  IMAGE: southamerica-west1-docker.pkg.dev/agentappointment/backend-images/agente-citas
+  IMAGE: southamerica-west1-docker.pkg.dev/agentappointment/backendagent/agente-citas
 
 jobs:
   build:

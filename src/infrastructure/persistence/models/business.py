@@ -24,6 +24,8 @@ class BusinessModel(Base):
     timezone: Mapped[str] = mapped_column(String(63), nullable=False, default="UTC")
     is_active: Mapped[bool] = mapped_column(default=True)
     whatsapp_phone_number_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    whatsapp_waba_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    whatsapp_access_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
     whatsapp_app_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
     owner_whatsapp: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

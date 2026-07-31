@@ -11,6 +11,7 @@ from src.application.onboarding.register_tenant import (
     UserFactory,
     VerificationTokenService,
 )
+from src.application.reports.repository import ReportsRepository
 from src.application.shared.unit_of_work import UnitOfWork
 from src.domain.appointment.repository import AppointmentRepository
 from src.domain.business.repository import BusinessRepository
@@ -26,6 +27,7 @@ from src.application.notifications.email_service import EmailService
 from src.infrastructure.adapters.jwt_service import JWTService
 from src.infrastructure.adapters.password_hasher import Argon2PasswordHasher
 from src.infrastructure.adapters.user_factory import UserFactoryImpl
+from src.infrastructure.adapters.db_verification_token_service import DatabaseVerificationTokenService
 from src.infrastructure.adapters.verification_token_service import InMemoryVerificationTokenService
 from src.infrastructure.config.settings import get_settings
 from src.infrastructure.notifications.console_email_service import ConsoleEmailService
@@ -39,20 +41,15 @@ from src.infrastructure.persistence.repositories.client_repository import Client
 from src.infrastructure.persistence.repositories.conversation_repository import ConversationRepositoryImpl
 from src.infrastructure.persistence.repositories.human_transfer_repository import HumanTransferRepositoryImpl
 from src.infrastructure.persistence.repositories.professional_repository import ProfessionalRepositoryImpl
+from src.infrastructure.persistence.repositories.reports_repository import ReportsRepositoryImpl
 from src.infrastructure.persistence.repositories.service_repository import ServiceRepositoryImpl
 from src.infrastructure.persistence.repositories.tenant_repository import TenantRepositoryImpl
 from src.infrastructure.persistence.repositories.user_repository import UserRepositoryImpl
+from src.infrastructure.whatsapp.meta_graph_client import MetaGraphClient
 
-_verification_token_service: InMemoryVerificationTokenService | None = None
 _jwt_service: JWTService | None = None
 _email_service: EmailService | None = None
-
-
-def _get_verification_token_service() -> InMemoryVerificationTokenService:
-    global _verification_token_service
-    if _verification_token_service is None:
-        _verification_token_service = InMemoryVerificationTokenService()
-    return _verification_token_service
+_meta_graph_client: MetaGraphClient | None = None
 
 
 def _get_email_service() -> EmailService:
@@ -107,9 +104,9 @@ def get_password_hasher() -> Argon2PasswordHasher:
     return Argon2PasswordHasher()
 
 
-def get_verification_token_service() -> VerificationTokenService:
-    """DI: VerificationTokenService."""
-    return _get_verification_token_service()
+def get_verification_token_service(session: DbSession) -> VerificationTokenService:
+    """DI: VerificationTokenService — DB-backed so tokens survive server restarts."""
+    return DatabaseVerificationTokenService(session)
 
 
 def get_email_service() -> EmailService:
@@ -175,6 +172,24 @@ def get_conversation_repository(session: DbSession) -> ConversationRepository:
 def get_human_transfer_repository(session: DbSession) -> HumanTransferRepository:
     """DI: HumanTransferRepository."""
     return HumanTransferRepositoryImpl(session)
+
+
+def get_reports_repository(session: DbSession) -> ReportsRepository:
+    """DI: ReportsRepository — analytical queries scoped to current tenant."""
+    return ReportsRepositoryImpl(session)
+
+
+def get_meta_graph_client() -> MetaGraphClient:
+    """DI: MetaGraphClient — Meta Graph API for Embedded Signup OAuth."""
+    global _meta_graph_client
+    if _meta_graph_client is None:
+        s = get_settings()
+        _meta_graph_client = MetaGraphClient(
+            app_id=s.meta_app_id,
+            app_secret=s.meta_app_secret,
+            api_version=s.whatsapp_api_version,
+        )
+    return _meta_graph_client
 
 
 def get_unit_of_work(session: DbSession) -> UnitOfWork:

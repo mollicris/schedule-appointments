@@ -8,6 +8,7 @@ from src.presentation.api.v1 import (
     conversation_routes,
     onboarding_routes,
     professional_routes,
+    reports_routes,
     service_routes,
     transfer_routes,
     wizard_routes,
@@ -30,3 +31,4 @@ api_v1_router.include_router(business_hours_routes.router)
 api_v1_router.include_router(appointment_routes.router)
 api_v1_router.include_router(conversation_routes.router)
 api_v1_router.include_router(transfer_routes.router)
+api_v1_router.include_router(reports_routes.router)

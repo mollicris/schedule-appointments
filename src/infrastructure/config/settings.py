@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str = ""
     whatsapp_app_secret: str = ""
 
+    # Meta App credentials for Embedded Signup OAuth flow
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
+
     rate_limit_per_minute: int = 10
     rate_limit_per_hour: int = 50
 

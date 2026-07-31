@@ -29,6 +29,8 @@ class Business(TenantAwareEntity):
     timezone: str = "UTC"
     is_active: bool = True
     whatsapp_phone_number_id: str | None = None
+    whatsapp_waba_id: str | None = None
+    whatsapp_access_token: str | None = None
     whatsapp_app_secret: str | None = None
     owner_whatsapp: str | None = None
 
@@ -110,11 +112,40 @@ class Business(TenantAwareEntity):
         phone_number_id: str | None,
         app_secret: str | None,
         owner_whatsapp: str | None,
+        waba_id: str | None = None,
+        access_token: str | None = None,
     ) -> None:
         """Set or clear WhatsApp integration credentials."""
         self.whatsapp_phone_number_id = phone_number_id.strip() if phone_number_id else None
         self.whatsapp_app_secret = app_secret.strip() if app_secret else None
         self.owner_whatsapp = owner_whatsapp.strip() if owner_whatsapp else None
+        if waba_id is not None:
+            self.whatsapp_waba_id = waba_id.strip() if waba_id else None
+        if access_token is not None:
+            self.whatsapp_access_token = access_token.strip() if access_token else None
+        self.updated_at = datetime.utcnow()
+
+    def connect_via_embedded_signup(
+        self,
+        *,
+        waba_id: str,
+        phone_number_id: str,
+        access_token: str,
+        phone_display: str | None = None,
+    ) -> None:
+        """Store credentials obtained from Meta Embedded Signup OAuth flow."""
+        if not waba_id.strip():
+            raise BusinessRuleViolationError("WABA ID cannot be empty")
+        if not phone_number_id.strip():
+            raise BusinessRuleViolationError("Phone Number ID cannot be empty")
+        if not access_token.strip():
+            raise BusinessRuleViolationError("Access token cannot be empty")
+
+        self.whatsapp_waba_id = waba_id.strip()
+        self.whatsapp_phone_number_id = phone_number_id.strip()
+        self.whatsapp_access_token = access_token.strip()
+        if phone_display:
+            self.owner_whatsapp = phone_display.strip()
         self.updated_at = datetime.utcnow()
 
     def deactivate(self) -> None:

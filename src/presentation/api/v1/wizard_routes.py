@@ -7,18 +7,21 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.application.onboarding.complete_wizard import CompleteWizardInput, CompleteWizardUseCase
+from src.application.onboarding.connect_whatsapp import ConnectWhatsAppInput, ConnectWhatsAppUseCase
 from src.application.onboarding.industry_templates import get_templates
 from src.application.shared.tenant_context import get_current_tenant
 from src.application.shared.unit_of_work import UnitOfWork
 from src.domain.business.repository import BusinessRepository
 from src.domain.business_hours.repository import BusinessHourRepository
 from src.domain.service.repository import ServiceRepository
-from src.domain.shared.errors import BusinessRuleViolationError, ValidationError
+from src.domain.shared.errors import BusinessRuleViolationError, NotFoundError, ValidationError
 from src.domain.tenant.repository import TenantRepository
 from src.domain.tenant.value_objects import TenantStatus
+from src.infrastructure.whatsapp.meta_graph_client import MetaGraphClient
 from src.presentation.dependencies import (
     get_business_hours_repository,
     get_business_repository,
+    get_meta_graph_client,
     get_service_repository,
     get_tenant_repository,
     get_unit_of_work,
@@ -154,4 +157,107 @@ async def complete_wizard(
             tenant_status=output.tenant_status,
             services_created=output.services_created,
         ),
+    )
+
+
+# ── WhatsApp Embedded Signup ──────────────────────────────────────────────────
+
+
+class WhatsAppConnectRequest(BaseModel):
+    code: str = Field(min_length=1, description="Auth code returned by the Facebook Embedded Signup popup")
+    redirect_uri: str = Field(default="", description="Must match the URI registered in your Meta App")
+
+
+class WhatsAppConnectResponseData(BaseModel):
+    business_id: UUID
+    waba_id: str
+    phone_number_id: str
+    phone_display: str
+
+
+class WhatsAppConnectResponse(BaseModel):
+    success: bool = True
+    message: str
+    data: WhatsAppConnectResponseData
+
+
+class WhatsAppStatusResponse(BaseModel):
+    connected: bool
+    phone_number_id: str | None
+    waba_id: str | None
+    phone_display: str | None
+    meta_app_id: str
+
+
+@router.post(
+    "/whatsapp/connect",
+    status_code=status.HTTP_200_OK,
+    summary="Complete WhatsApp Embedded Signup — exchange OAuth code for credentials",
+    responses={
+        400: {"description": "Meta API error or missing WABA/phone"},
+        404: {"description": "No active business found"},
+    },
+)
+async def connect_whatsapp(
+    payload: WhatsAppConnectRequest,
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
+    meta_client: Annotated[MetaGraphClient, Depends(get_meta_graph_client)],
+    uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> WhatsAppConnectResponse:
+    use_case = ConnectWhatsAppUseCase(
+        businesses=businesses,
+        meta_client=meta_client,
+        uow=uow,
+    )
+    try:
+        output = await use_case.execute(
+            ConnectWhatsAppInput(code=payload.code, redirect_uri=payload.redirect_uri)
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return WhatsAppConnectResponse(
+        success=True,
+        message=f"WhatsApp conectado correctamente al número {output.phone_display}.",
+        data=WhatsAppConnectResponseData(
+            business_id=output.business_id,
+            waba_id=output.waba_id,
+            phone_number_id=output.phone_number_id,
+            phone_display=output.phone_display,
+        ),
+    )
+
+
+@router.get(
+    "/whatsapp/status",
+    status_code=status.HTTP_200_OK,
+    summary="Check WhatsApp connection status for the current tenant's business",
+)
+async def get_whatsapp_status(
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
+    meta_client: Annotated[MetaGraphClient, Depends(get_meta_graph_client)],
+) -> WhatsAppStatusResponse:
+    from src.infrastructure.config.settings import get_settings
+    settings = get_settings()
+
+    active = await businesses.list_active(limit=1)
+    if not active:
+        return WhatsAppStatusResponse(
+            connected=False,
+            phone_number_id=None,
+            waba_id=None,
+            phone_display=None,
+            meta_app_id=settings.meta_app_id,
+        )
+
+    business = active[0]
+    connected = bool(business.whatsapp_phone_number_id and business.whatsapp_waba_id)
+    return WhatsAppStatusResponse(
+        connected=connected,
+        phone_number_id=business.whatsapp_phone_number_id,
+        waba_id=business.whatsapp_waba_id,
+        phone_display=business.owner_whatsapp,
+        meta_app_id=settings.meta_app_id,
     )

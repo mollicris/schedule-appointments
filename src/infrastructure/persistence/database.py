@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import DeclarativeBase
 
 from src.infrastructure.config.settings import get_settings
@@ -27,17 +28,43 @@ _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
+def _is_transaction_pooler(url: str) -> bool:
+    """True when the URL points at PgBouncer in transaction mode.
+
+    Supabase serves that pooler on port 6543 (the session pooler and the direct
+    connection both use 5432).
+    """
+    return ":6543/" in url or "pgbouncer=true" in url
+
+
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
         settings = get_settings()
-        _engine = create_async_engine(
-            settings.database_url,
-            echo=settings.app_debug,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
+        url = settings.database_url
+        kwargs: dict = {
+            "echo": settings.app_debug,
+            "pool_pre_ping": True,
+            "pool_size": 10,
+            "max_overflow": 20,
+        }
+
+        if _is_transaction_pooler(url):
+            # asyncpg prepares every statement and reuses it by name; PgBouncer in
+            # transaction mode hands each transaction a different backend, so the
+            # name is not there any more and queries fail with
+            # DuplicatePreparedStatementError / InvalidSQLStatementName.
+            # Disabling both caches is what makes asyncpg work through the pooler.
+            # Pooling is PgBouncer's job here, so NullPool avoids pooling twice.
+            kwargs["poolclass"] = NullPool
+            kwargs.pop("pool_size")
+            kwargs.pop("max_overflow")
+            kwargs["connect_args"] = {
+                "statement_cache_size": 0,
+                "prepared_statement_cache_size": 0,
+            }
+
+        _engine = create_async_engine(url, **kwargs)
     return _engine
 
 

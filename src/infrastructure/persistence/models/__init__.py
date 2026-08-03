@@ -19,6 +19,12 @@ from src.infrastructure.persistence.models.business import (
 from src.infrastructure.persistence.models.client import ClientModel
 from src.infrastructure.persistence.models.conversation import ConversationModel, HumanTransferModel, MessageModel
 from src.infrastructure.persistence.models.identity import UserModel
+from src.infrastructure.persistence.models.membership import (
+    CampaignSendModel,
+    MembershipModel,
+    MembershipPlanModel,
+    MembershipPlanServiceModel,
+)
 from src.infrastructure.persistence.models.tenants import TenantModel
 
 __all__ = [
@@ -34,4 +40,8 @@ __all__ = [
     "ConversationModel",
     "MessageModel",
     "HumanTransferModel",
+    "MembershipPlanModel",
+    "MembershipPlanServiceModel",
+    "MembershipModel",
+    "CampaignSendModel",
 ]

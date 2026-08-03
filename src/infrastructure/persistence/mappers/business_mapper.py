@@ -26,6 +26,10 @@ class BusinessMapper:
             whatsapp_access_token=business.whatsapp_access_token,
             whatsapp_app_secret=business.whatsapp_app_secret,
             owner_whatsapp=business.owner_whatsapp,
+            facebook_page_id=business.facebook_page_id,
+            facebook_page_access_token=business.facebook_page_access_token,
+            instagram_account_id=business.instagram_account_id,
+            meta_app_secret=business.meta_app_secret,
             created_at=business.created_at,
             updated_at=business.updated_at,
         )
@@ -52,6 +56,10 @@ class BusinessMapper:
             whatsapp_access_token=model.whatsapp_access_token,
             whatsapp_app_secret=model.whatsapp_app_secret,
             owner_whatsapp=model.owner_whatsapp,
+            facebook_page_id=model.facebook_page_id,
+            facebook_page_access_token=model.facebook_page_access_token,
+            instagram_account_id=model.instagram_account_id,
+            meta_app_secret=model.meta_app_secret,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )

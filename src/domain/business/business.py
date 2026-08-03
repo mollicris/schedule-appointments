@@ -33,6 +33,11 @@ class Business(TenantAwareEntity):
     whatsapp_access_token: str | None = None
     whatsapp_app_secret: str | None = None
     owner_whatsapp: str | None = None
+    # Messenger and Instagram: one Facebook Page serves both channels
+    facebook_page_id: str | None = None
+    facebook_page_access_token: str | None = None
+    instagram_account_id: str | None = None
+    meta_app_secret: str | None = None
 
     @classmethod
     def create(
@@ -124,6 +129,39 @@ class Business(TenantAwareEntity):
         if access_token is not None:
             self.whatsapp_access_token = access_token.strip() if access_token else None
         self.updated_at = datetime.utcnow()
+
+    def configure_social_channels(
+        self,
+        *,
+        facebook_page_id: str | None = None,
+        facebook_page_access_token: str | None = None,
+        instagram_account_id: str | None = None,
+        meta_app_secret: str | None = None,
+    ) -> None:
+        """Set or clear the Messenger / Instagram credentials.
+
+        Both channels are served by the same Facebook Page: one Page ID, one
+        page access token, and the Instagram professional account linked to it.
+        Passing ``None`` leaves a field untouched; passing an empty string
+        clears it.
+        """
+        if facebook_page_id is not None:
+            self.facebook_page_id = facebook_page_id.strip() or None
+        if facebook_page_access_token is not None:
+            self.facebook_page_access_token = facebook_page_access_token.strip() or None
+        if instagram_account_id is not None:
+            self.instagram_account_id = instagram_account_id.strip() or None
+        if meta_app_secret is not None:
+            self.meta_app_secret = meta_app_secret.strip() or None
+        self.updated_at = datetime.utcnow()
+
+    @property
+    def has_messenger(self) -> bool:
+        return bool(self.facebook_page_id and self.facebook_page_access_token)
+
+    @property
+    def has_instagram(self) -> bool:
+        return bool(self.instagram_account_id and self.facebook_page_access_token)
 
     def connect_via_embedded_signup(
         self,

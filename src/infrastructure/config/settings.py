@@ -46,6 +46,27 @@ class Settings(BaseSettings):
     # Meta App credentials for Embedded Signup OAuth flow
     meta_app_id: str = ""
     meta_app_secret: str = ""
+    # Verify token for the Messenger / Instagram webhook. Falls back to the
+    # WhatsApp one so an existing deployment keeps working with a single token.
+    meta_verify_token: str = ""
+
+    # Minutes after which an unresolved handover lets the bot take over again.
+    # 0 disables it: a real handover then waits for a human to resolve the
+    # transfer. Useful while testing, where nobody is watching the queue.
+    escalation_auto_resume_minutes: int = 0
+
+    # ── Proactive campaigns (gym module) ─────────────────────────────────────
+    # Off by default: writing outside Meta's 24h window requires templates
+    # approved in the Meta dashboard first. With no template names configured,
+    # sending fails closed even if the flag is on.
+    campaigns_enabled: bool = False
+    campaign_poll_interval_seconds: int = 3600
+    campaign_expiring_days: int = 7        # warn members whose plan ends within N days
+    campaign_inactive_days: int = 30       # win-back after N days without activity
+    campaign_daily_send_cap: int = 50      # per business, per cycle
+    whatsapp_template_language: str = "es"
+    whatsapp_template_membership_expiring: str = ""
+    whatsapp_template_winback: str = ""
 
     rate_limit_per_minute: int = 10
     rate_limit_per_hour: int = 50

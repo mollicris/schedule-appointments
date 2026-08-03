@@ -18,6 +18,7 @@ class CreateServiceInput:
     duration_minutes: int = 30
     description: str | None = None
     price: int | None = None
+    capacity: int = 1
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class CreateServiceOutput:
     service_id: UUID
     name: str
     duration_minutes: int
+    capacity: int = 1
 
 
 class CreateServiceUseCase(UseCase[CreateServiceInput, CreateServiceOutput]):
@@ -51,6 +53,7 @@ class CreateServiceUseCase(UseCase[CreateServiceInput, CreateServiceOutput]):
                 duration_minutes=input_data.duration_minutes,
                 description=input_data.description,
                 price=input_data.price,
+                capacity=input_data.capacity,
             )
 
             await self._services.add(service)
@@ -60,6 +63,7 @@ class CreateServiceUseCase(UseCase[CreateServiceInput, CreateServiceOutput]):
             service_id=service.id,
             name=service.name,
             duration_minutes=service.duration_minutes,
+            capacity=service.capacity,
         )
 
     def _validate_input(self, data: CreateServiceInput) -> None:
@@ -69,3 +73,5 @@ class CreateServiceUseCase(UseCase[CreateServiceInput, CreateServiceOutput]):
             raise ValidationError("Service duration must be at least 1 minute")
         if data.price is not None and data.price < 0:
             raise ValidationError("Service price cannot be negative")
+        if data.capacity < 1:
+            raise ValidationError("Service capacity must be at least 1")

@@ -7,7 +7,6 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.onboarding.register_tenant import (
-    PasswordHasher,
     UserFactory,
     VerificationTokenService,
 )
@@ -15,6 +14,7 @@ from src.application.reports.repository import ReportsRepository
 from src.application.shared.unit_of_work import UnitOfWork
 from src.domain.appointment.repository import AppointmentRepository
 from src.domain.business.repository import BusinessRepository
+from src.domain.membership.repository import MembershipPlanRepository, MembershipRepository
 from src.domain.conversation.human_transfer_repository import HumanTransferRepository
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.business_hours.repository import BusinessHourRepository
@@ -28,7 +28,6 @@ from src.infrastructure.adapters.jwt_service import JWTService
 from src.infrastructure.adapters.password_hasher import Argon2PasswordHasher
 from src.infrastructure.adapters.user_factory import UserFactoryImpl
 from src.infrastructure.adapters.db_verification_token_service import DatabaseVerificationTokenService
-from src.infrastructure.adapters.verification_token_service import InMemoryVerificationTokenService
 from src.infrastructure.config.settings import get_settings
 from src.infrastructure.notifications.console_email_service import ConsoleEmailService
 from src.infrastructure.notifications.resend_email_service import ResendEmailService
@@ -40,6 +39,10 @@ from src.infrastructure.persistence.repositories.business_repository import Busi
 from src.infrastructure.persistence.repositories.client_repository import ClientRepositoryImpl
 from src.infrastructure.persistence.repositories.conversation_repository import ConversationRepositoryImpl
 from src.infrastructure.persistence.repositories.human_transfer_repository import HumanTransferRepositoryImpl
+from src.infrastructure.persistence.repositories.membership_repository import (
+    MembershipPlanRepositoryImpl,
+    MembershipRepositoryImpl,
+)
 from src.infrastructure.persistence.repositories.professional_repository import ProfessionalRepositoryImpl
 from src.infrastructure.persistence.repositories.reports_repository import ReportsRepositoryImpl
 from src.infrastructure.persistence.repositories.service_repository import ServiceRepositoryImpl
@@ -177,6 +180,16 @@ def get_human_transfer_repository(session: DbSession) -> HumanTransferRepository
 def get_reports_repository(session: DbSession) -> ReportsRepository:
     """DI: ReportsRepository — analytical queries scoped to current tenant."""
     return ReportsRepositoryImpl(session)
+
+
+def get_membership_plan_repository(session: DbSession) -> MembershipPlanRepository:
+    """DI: MembershipPlanRepository."""
+    return MembershipPlanRepositoryImpl(session)
+
+
+def get_membership_repository(session: DbSession) -> MembershipRepository:
+    """DI: MembershipRepository."""
+    return MembershipRepositoryImpl(session)
 
 
 def get_meta_graph_client() -> MetaGraphClient:

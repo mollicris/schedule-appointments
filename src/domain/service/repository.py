@@ -24,6 +24,22 @@ class ServiceRepository(Protocol):
         """Count active services for a specific business."""
         ...
 
+    async def get_capacity_map(self, service_ids: list[UUID]) -> dict[UUID, int]:
+        """Return service_id → capacity for the given ids (includes inactive ones).
+
+        Used when evaluating slots: the capacity of an already-booked service
+        decides whether it blocks a group class.
+        """
+        ...
+
+    async def lock_for_update(self, service_id: UUID) -> Service | None:
+        """Get a service taking a row lock (SELECT … FOR UPDATE).
+
+        Serialises concurrent bookings of the same group class so capacity is
+        counted reliably. Must run inside a transaction.
+        """
+        ...
+
     async def add(self, service: Service) -> None:
         """Create a new service."""
         ...

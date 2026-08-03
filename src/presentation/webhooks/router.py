@@ -10,7 +10,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 from src.application.conversation.process_inbound_message import (
     InboundMessage,
@@ -31,6 +31,10 @@ from src.infrastructure.persistence.repositories.business_repository import Busi
 from src.infrastructure.persistence.repositories.client_repository import ClientRepositoryImpl
 from src.infrastructure.persistence.repositories.conversation_repository import ConversationRepositoryImpl
 from src.infrastructure.persistence.repositories.human_transfer_repository import HumanTransferRepositoryImpl
+from src.infrastructure.persistence.repositories.membership_repository import (
+    MembershipPlanRepositoryImpl,
+    MembershipRepositoryImpl,
+)
 from src.infrastructure.persistence.repositories.professional_repository import ProfessionalRepositoryImpl
 from src.infrastructure.persistence.repositories.service_repository import ServiceRepositoryImpl
 from src.infrastructure.persistence.repositories.tenant_repository import TenantRepositoryImpl
@@ -147,6 +151,8 @@ async def _handle_change(
         professional_repo = ProfessionalRepositoryImpl(session)
         business_hour_repo = BusinessHourRepositoryImpl(session)
         human_transfer_repo = HumanTransferRepositoryImpl(session)
+        membership_plan_repo = MembershipPlanRepositoryImpl(session)
+        membership_repo = MembershipRepositoryImpl(session)
 
         # 5. Load services and tenant industry
         services = await service_repo.list_by_business(business.id)
@@ -167,9 +173,12 @@ async def _handle_change(
         uow = _SessionUoW()
         settings = get_settings()
 
+        # Prefer the token stored on the business: it can be rotated with a plain
+        # UPDATE and takes effect on the next message, without restarting the app
+        # (settings are cached by @lru_cache, so the .env token needs a restart).
         wa_client = whatsapp_client_for_business(
             phone_number_id=phone_number_id,
-            access_token=settings.whatsapp_access_token,
+            access_token=business.whatsapp_access_token or settings.whatsapp_access_token,
         )
 
         use_case = ProcessInboundMessageUseCase(
@@ -182,6 +191,8 @@ async def _handle_change(
             human_transfers=human_transfer_repo,
             agent=_get_booking_agent(),
             uow=uow,
+            membership_plans=membership_plan_repo,
+            memberships=membership_repo,
         )
 
         # 6. Process each individual message
@@ -191,22 +202,25 @@ async def _handle_change(
             if content is None:
                 continue
 
-            # Short-circuit: handle reminder button replies without calling the AI
+            # Short-circuit: confirm/cancel from a reminder need no AI. "Reagendar"
+            # is NOT short-circuited: it falls through to the agent, which owns
+            # the reschedule tool and can offer alternative times.
             button_id = (extra or {}).get("button_id", "")
             if button_id.startswith("rem_"):
-                await _handle_reminder_button(
+                handled = await _handle_reminder_button(
                     session=session,
                     button_id=button_id,
                     wa_client=wa_client,
                     from_number=msg.get("from", ""),
                 )
-                continue
+                if handled:
+                    continue
 
             contact = contacts.get(msg.get("from", ""), {})
             sender_name = contact.get("profile", {}).get("name", "")
 
             inbound = InboundMessage(
-                whatsapp_message_id=msg["id"],
+                external_message_id=msg["id"],
                 from_number=msg["from"],
                 sender_name=sender_name,
                 content=content,
@@ -220,7 +234,10 @@ async def _handle_change(
                         tenant_id=business.tenant_id,
                         business_id=business.id,
                         message=inbound,
-                        whatsapp_client=wa_client,
+                        messaging=wa_client,
+                        # On WhatsApp the inbound provider is also the one that
+                        # reaches staff.
+                        staff_notifier=wa_client,
                         business=business,
                         services=services,
                         industry=industry,
@@ -240,22 +257,31 @@ async def _handle_reminder_button(
     button_id: str,
     wa_client,
     from_number: str,
-) -> None:
-    """Directly apply confirm/cancel from a reminder button reply."""
+) -> bool:
+    """Apply confirm/cancel from a reminder button reply.
+
+    Returns True when the reply was fully handled here. Returns False for
+    "Reagendar" (and anything unrecognised) so the caller lets the message reach
+    the agent, which can look up the appointment and offer new times.
+    """
     parts = button_id.split("_", 2)   # rem | confirm/cancel/reschedule | uuid
     if len(parts) != 3:
-        return
+        return False
 
     action, apt_id_str = parts[1], parts[2]
+    if action == "reschedule":
+        # Handled by the agent (it owns reschedule_appointment).
+        return False
+
     try:
         apt_id = UUID(apt_id_str)
     except ValueError:
         log.warning("reminder_button_bad_uuid", button_id=button_id)
-        return
+        return False
 
     apt: AppointmentModel | None = await session.get(AppointmentModel, apt_id)
     if apt is None:
-        return
+        return False
 
     now = datetime.now(timezone.utc)
 
@@ -286,16 +312,11 @@ async def _handle_reminder_button(
             log.info("reminder_cancelled", appointment_id=apt_id_str)
         reply = "Tu cita ha sido cancelada. Escríbenos cuando quieras reagendar."
 
-    elif action == "reschedule":
-        reply = (
-            "Entendido, vamos a reagendar tu cita. "
-            "¿Qué día y hora te quedaría mejor?"
-        )
-
     else:
-        return
+        return False
 
     await wa_client.send_text(to=from_number, body=reply)
+    return True
 
 
 def _verify_signature(raw_body: bytes, app_secret: str, header: str | None) -> bool:

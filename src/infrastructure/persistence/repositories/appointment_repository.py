@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.shared.tenant_context import get_current_tenant
@@ -106,20 +106,58 @@ class AppointmentRepositoryImpl(AppointmentRepository):
         # Filter by end time in Python (scheduled_at + duration > start)
         result = []
         for r in rows:
-            apt_end = datetime(
-                r.scheduled_at.year,
-                r.scheduled_at.month,
-                r.scheduled_at.day,
-                r.scheduled_at.hour,
-                r.scheduled_at.minute,
-                r.scheduled_at.second,
-                tzinfo=r.scheduled_at.tzinfo,
-            )
-            from datetime import timedelta
             apt_end = r.scheduled_at + timedelta(minutes=r.duration_minutes)
             if apt_end > start:
                 result.append(AppointmentMapper.to_domain(r))
         return result
+
+    async def get_active_for_client_at(
+        self,
+        client_id: UUID,
+        service_id: UUID,
+        scheduled_at: datetime,
+    ) -> Appointment | None:
+        tenant = get_current_tenant()
+        active_statuses = [
+            AppointmentStatus.PENDING.value,
+            AppointmentStatus.CONFIRMED.value,
+            AppointmentStatus.RESCHEDULED.value,
+        ]
+        row = await self._session.scalar(
+            select(AppointmentModel).where(
+                and_(
+                    AppointmentModel.tenant_id == tenant.tenant_id,
+                    AppointmentModel.client_id == client_id,
+                    AppointmentModel.service_id == service_id,
+                    AppointmentModel.scheduled_at == scheduled_at,
+                    AppointmentModel.status.in_(active_statuses),
+                )
+            )
+        )
+        return AppointmentMapper.to_domain(row) if row else None
+
+    async def count_active_for_service_at(
+        self,
+        service_id: UUID,
+        scheduled_at: datetime,
+    ) -> int:
+        tenant = get_current_tenant()
+        active_statuses = [
+            AppointmentStatus.PENDING.value,
+            AppointmentStatus.CONFIRMED.value,
+            AppointmentStatus.RESCHEDULED.value,
+        ]
+        count = await self._session.scalar(
+            select(func.count(AppointmentModel.id)).where(
+                and_(
+                    AppointmentModel.tenant_id == tenant.tenant_id,
+                    AppointmentModel.service_id == service_id,
+                    AppointmentModel.scheduled_at == scheduled_at,
+                    AppointmentModel.status.in_(active_statuses),
+                )
+            )
+        )
+        return count or 0
 
     async def add(self, appointment: Appointment) -> None:
         self._session.add(AppointmentMapper.to_model(appointment))

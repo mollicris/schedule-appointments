@@ -9,12 +9,21 @@ from src.domain.shared.entity import TenantAwareEntity
 
 @dataclass(eq=False)
 class HumanTransfer(TenantAwareEntity):
+    """Something a human at the business has to pick up.
+
+    Two kinds share this queue:
+      - ``escalation``: the bot handed the conversation over and went quiet.
+      - ``lead``: someone on Facebook or Instagram left their details; the bot
+        keeps chatting, reception just has to call them back.
+    """
+
     business_id: UUID = UUID(int=0)
     conversation_id: UUID = UUID(int=0)
     client_id: UUID = UUID(int=0)
     reason: str | None = None
     context_snapshot: list = field(default_factory=list)
     status: str = "pending"
+    kind: str = "escalation"      # "escalation" | "lead"
     resolved_at: datetime | None = None
     resolved_by_id: UUID | None = None
 
@@ -28,6 +37,7 @@ class HumanTransfer(TenantAwareEntity):
         client_id: UUID,
         reason: str | None = None,
         context_snapshot: list | None = None,
+        kind: str = "escalation",
     ) -> HumanTransfer:
         now = datetime.now(timezone.utc)
         return cls(
@@ -39,6 +49,7 @@ class HumanTransfer(TenantAwareEntity):
             reason=reason,
             context_snapshot=context_snapshot or [],
             status="pending",
+            kind=kind,
             created_at=now,
             updated_at=now,
         )

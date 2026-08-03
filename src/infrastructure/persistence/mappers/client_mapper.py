@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.domain.client.client import Client
+from src.domain.shared.channel import Channel
 from src.infrastructure.persistence.models.client import ClientModel
 
 
@@ -11,7 +12,9 @@ class ClientMapper:
         return ClientModel(
             id=client.id,
             tenant_id=client.tenant_id,
-            whatsapp_number=client.whatsapp_number,
+            whatsapp_number=client.whatsapp_number or None,
+            channel=client.channel.value,
+            external_id=client.external_id or client.whatsapp_number,
             name=client.name,
             email=client.email,
             phone=client.phone,
@@ -30,7 +33,9 @@ class ClientMapper:
         return Client(
             id=model.id,
             tenant_id=model.tenant_id,
-            whatsapp_number=model.whatsapp_number,
+            whatsapp_number=model.whatsapp_number or "",
+            channel=Channel(model.channel),
+            external_id=model.external_id,
             name=model.name,
             email=model.email,
             phone=model.phone,

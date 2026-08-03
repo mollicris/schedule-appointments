@@ -32,6 +32,22 @@ class BusinessRepository(Protocol):
         """Check if a slug is already taken (within this tenant)."""
         ...
 
+    async def get_by_whatsapp_phone_number_id(self, phone_number_id: str) -> Business | None:
+        """Global lookup for the WhatsApp webhook — no tenant scope.
+
+        Inbound webhooks arrive with no tenant context: the business is what
+        resolves it.
+        """
+        ...
+
+    async def get_by_facebook_page_id(self, page_id: str) -> Business | None:
+        """Global lookup for the Messenger webhook — no tenant scope."""
+        ...
+
+    async def get_by_instagram_account_id(self, instagram_account_id: str) -> Business | None:
+        """Global lookup for the Instagram webhook — no tenant scope."""
+        ...
+
     async def add(self, business: Business) -> None:
         """Create a new business."""
         ...

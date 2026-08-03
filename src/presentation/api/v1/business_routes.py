@@ -31,6 +31,11 @@ from src.application.business.update_business import (
     UpdateBusinessOutput,
     UpdateBusinessUseCase,
 )
+from src.application.business.update_business_channels import (
+    UpdateBusinessChannelsInput,
+    UpdateBusinessChannelsOutput,
+    UpdateBusinessChannelsUseCase,
+)
 from src.application.business.update_business_whatsapp import (
     UpdateBusinessWhatsappInput,
     UpdateBusinessWhatsappOutput,
@@ -76,6 +81,23 @@ class UpdateWhatsappRequest(BaseModel):
     phone_number_id: str | None = Field(default=None, max_length=64)
     app_secret: str | None = Field(default=None, max_length=255)
     owner_whatsapp: str | None = Field(default=None, max_length=20)
+
+
+class UpdateChannelsRequest(BaseModel):
+    facebook_page_id: str | None = Field(default=None, max_length=64)
+    facebook_page_access_token: str | None = Field(default=None, max_length=512)
+    instagram_account_id: str | None = Field(default=None, max_length=64)
+    meta_app_secret: str | None = Field(default=None, max_length=255)
+
+
+class ChannelsConfigResponse(BaseModel):
+    business_id: UUID
+    facebook_page_id: str | None = None
+    instagram_account_id: str | None = None
+    messenger_connected: bool = False
+    instagram_connected: bool = False
+    has_page_access_token: bool = False
+    has_meta_app_secret: bool = False
 
 
 class WhatsappConfigResponse(BaseModel):
@@ -275,6 +297,47 @@ async def update_business_whatsapp(
             whatsapp_phone_number_id=output.whatsapp_phone_number_id,
             owner_whatsapp=output.owner_whatsapp,
             has_whatsapp_app_secret=output.has_whatsapp_app_secret,
+        ),
+    )
+
+
+@router.patch(
+    "/{business_id}/channels",
+    status_code=status.HTTP_200_OK,
+    summary="Configure Messenger and Instagram",
+    description=(
+        "Set the Facebook Page ID, the page access token and the Instagram account ID. "
+        "One page serves both channels. Values are taken from the Meta dashboard: "
+        "Messenger → Settings → Access Tokens."
+    ),
+)
+async def update_business_channels(
+    business_id: UUID,
+    payload: UpdateChannelsRequest,
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
+    uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> SuccessResponse:
+    use_case = UpdateBusinessChannelsUseCase(businesses=businesses, uow=uow)
+    output: UpdateBusinessChannelsOutput = await use_case.execute(
+        UpdateBusinessChannelsInput(
+            business_id=business_id,
+            facebook_page_id=payload.facebook_page_id,
+            facebook_page_access_token=payload.facebook_page_access_token,
+            instagram_account_id=payload.instagram_account_id,
+            meta_app_secret=payload.meta_app_secret,
+        )
+    )
+    return success_response(
+        message="Channel configuration updated successfully",
+        code="CHANNELS_CONFIGURED",
+        data=ChannelsConfigResponse(
+            business_id=output.business_id,
+            facebook_page_id=output.facebook_page_id,
+            instagram_account_id=output.instagram_account_id,
+            messenger_connected=output.messenger_connected,
+            instagram_connected=output.instagram_connected,
+            has_page_access_token=output.has_page_access_token,
+            has_meta_app_secret=output.has_meta_app_secret,
         ),
     )
 

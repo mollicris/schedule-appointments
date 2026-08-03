@@ -120,6 +120,26 @@ class BusinessRepositoryImpl(BusinessRepository):
         )
         return BusinessMapper.toPersistence(row) if row else None
 
+    async def get_by_facebook_page_id(self, page_id: str) -> Business | None:
+        """Global lookup by Facebook Page ID — no tenant scope (webhook use only)."""
+        row = await self._session.scalar(
+            select(BusinessModel).where(
+                BusinessModel.facebook_page_id == page_id,
+                BusinessModel.is_active.is_(True),
+            )
+        )
+        return BusinessMapper.toPersistence(row) if row else None
+
+    async def get_by_instagram_account_id(self, instagram_account_id: str) -> Business | None:
+        """Global lookup by Instagram account ID — no tenant scope (webhook use only)."""
+        row = await self._session.scalar(
+            select(BusinessModel).where(
+                BusinessModel.instagram_account_id == instagram_account_id,
+                BusinessModel.is_active.is_(True),
+            )
+        )
+        return BusinessMapper.toPersistence(row) if row else None
+
     async def delete(self, business_id: UUID) -> bool:
         tenant = get_current_tenant()
         stmt = select(BusinessModel).where(

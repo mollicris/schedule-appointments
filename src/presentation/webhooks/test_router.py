@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.application.conversation.process_inbound_message import (
     InboundMessage,
@@ -11,8 +11,8 @@ from src.application.conversation.process_inbound_message import (
 )
 from src.application.shared.unit_of_work import UnitOfWork
 from src.infrastructure.ai.booking_agent import BookingAgent
+from src.domain.shared.channel import Channel
 from src.infrastructure.config.settings import get_settings
-from src.infrastructure.messaging.whatsapp_client import WhatsAppClient
 from src.infrastructure.persistence.database import get_session_factory
 from src.infrastructure.persistence.repositories.appointment_repository import AppointmentRepositoryImpl
 from src.infrastructure.persistence.repositories.business_hour_repository import BusinessHourRepositoryImpl
@@ -20,6 +20,10 @@ from src.infrastructure.persistence.repositories.business_repository import Busi
 from src.infrastructure.persistence.repositories.client_repository import ClientRepositoryImpl
 from src.infrastructure.persistence.repositories.conversation_repository import ConversationRepositoryImpl
 from src.infrastructure.persistence.repositories.human_transfer_repository import HumanTransferRepositoryImpl
+from src.infrastructure.persistence.repositories.membership_repository import (
+    MembershipPlanRepositoryImpl,
+    MembershipRepositoryImpl,
+)
 from src.infrastructure.persistence.repositories.professional_repository import ProfessionalRepositoryImpl
 from src.infrastructure.persistence.repositories.service_repository import ServiceRepositoryImpl
 
@@ -37,19 +41,30 @@ def _get_booking_agent() -> BookingAgent:
     return _booking_agent
 
 
-class _NullWhatsAppClient(WhatsAppClient):
-    """Dev-only client that logs instead of sending to WhatsApp."""
+class _NullMessagingProvider:
+    """Dev-only provider that logs instead of sending anywhere.
 
-    def __init__(self) -> None:
-        pass  # Skip real init — no credentials needed
+    Implements the MessagingProvider port directly instead of subclassing the
+    WhatsApp client, so it can stand in for any channel.
+    """
+
+    def __init__(self, channel: Channel = Channel.WHATSAPP) -> None:
+        self._channel = channel
+
+    @property
+    def channel(self) -> Channel:
+        return self._channel
 
     async def send_text(self, *, to: str, body: str) -> bool:
-        log.info("null_whatsapp_send_text", to=to, body=body)
+        log.info("null_send_text", channel=self._channel.value, to=to, body=body)
+        return True
+
+    async def send_buttons(self, *, to: str, body: str, buttons: list[dict]) -> bool:
+        log.info("null_send_buttons", channel=self._channel.value, to=to, buttons=buttons)
         return True
 
     async def send_interactive_buttons(self, *, to: str, body: str, buttons: list[dict]) -> bool:
-        log.info("null_whatsapp_send_buttons", to=to, body=body, buttons=buttons)
-        return True
+        return await self.send_buttons(to=to, body=body, buttons=buttons)
 
 
 class SimulateMessageRequest(BaseModel):
@@ -57,6 +72,14 @@ class SimulateMessageRequest(BaseModel):
     from_number: str = "+59171000001"
     sender_name: str = "Test User"
     message: str
+    channel: Channel = Channel.WHATSAPP
+    external_id: str | None = Field(
+        default=None,
+        description=(
+            "Channel id of the sender. Defaults to from_number. For Messenger or "
+            "Instagram use a fake PSID such as 'psid_test_1'."
+        ),
+    )
 
 
 class SimulateMessageResponse(BaseModel):
@@ -103,6 +126,8 @@ async def simulate_message(body: SimulateMessageRequest) -> SimulateMessageRespo
         professional_repo = ProfessionalRepositoryImpl(session)
         business_hour_repo = BusinessHourRepositoryImpl(session)
         human_transfer_repo = HumanTransferRepositoryImpl(session)
+        membership_plan_repo = MembershipPlanRepositoryImpl(session)
+        membership_repo = MembershipRepositoryImpl(session)
 
         services = await service_repo.list_by_business(business.id)
 
@@ -119,12 +144,15 @@ async def simulate_message(body: SimulateMessageRequest) -> SimulateMessageRespo
         uow = _SessionUoW()
 
         import uuid
+
+        null_client = _NullMessagingProvider(body.channel)
         inbound = InboundMessage(
-            whatsapp_message_id=f"test_{uuid.uuid4().hex[:12]}",
-            from_number=body.from_number,
+            external_message_id=f"test_{uuid.uuid4().hex[:12]}",
+            from_number=body.external_id or body.from_number,
             sender_name=body.sender_name,
             content=body.message,
             message_type="text",
+            channel=body.channel,
         )
 
         use_case = ProcessInboundMessageUseCase(
@@ -137,6 +165,8 @@ async def simulate_message(body: SimulateMessageRequest) -> SimulateMessageRespo
             human_transfers=human_transfer_repo,
             agent=_get_booking_agent(),
             uow=uow,
+            membership_plans=membership_plan_repo,
+            memberships=membership_repo,
         )
 
         output = await use_case.execute(
@@ -144,7 +174,8 @@ async def simulate_message(body: SimulateMessageRequest) -> SimulateMessageRespo
                 tenant_id=business.tenant_id,
                 business_id=business.id,
                 message=inbound,
-                whatsapp_client=_NullWhatsAppClient(),
+                messaging=null_client,
+                staff_notifier=null_client,
                 business=business,
                 services=services,
             )

@@ -22,6 +22,7 @@ class ServiceSummary:
     price: int | None
     is_active: bool
     professional_ids: list[UUID]
+    capacity: int = 1
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,7 @@ class ListServicesUseCase(UseCase[ListServicesInput, ListServicesOutput]):
                     price=s.price,
                     is_active=s.is_active,
                     professional_ids=professional_ids,
+                    capacity=s.capacity,
                 )
             )
 

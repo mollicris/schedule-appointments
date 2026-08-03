@@ -1,5 +1,11 @@
 from enum import Enum
 
+# Re-exported for convenience: the conversation context is the main consumer,
+# but Channel lives in shared/ so client and business can use it too.
+from src.domain.shared.channel import Channel
+
+__all__ = ["Channel", "ConversationState"]
+
 
 class ConversationState(str, Enum):
     """21-state conversation state machine from the spec."""

@@ -8,10 +8,12 @@ from fastapi.openapi.utils import get_openapi
 
 from src.infrastructure.config.settings import get_settings
 from src.infrastructure.config.logging import configure_logging
+from src.infrastructure.scheduler.campaign_scheduler import run_campaign_scheduler
 from src.infrastructure.scheduler.reminder_scheduler import run_reminder_scheduler
 from src.presentation.api.v1.router import api_v1_router
 from src.presentation.exception_handlers import register_exception_handlers
 from src.presentation.middleware import TenantContextMiddleware
+from src.presentation.webhooks.meta_router import meta_webhooks_router
 from src.presentation.webhooks.router import webhooks_router
 from src.presentation.webhooks.test_router import test_router
 
@@ -19,15 +21,23 @@ from src.presentation.webhooks.test_router import test_router
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
-    scheduler_task = asyncio.create_task(run_reminder_scheduler())
+
+    tasks = [asyncio.create_task(run_reminder_scheduler())]
+    # Proactive campaigns stay off unless explicitly enabled: they need
+    # Meta-approved templates to write outside the 24 h window.
+    if get_settings().campaigns_enabled:
+        tasks.append(asyncio.create_task(run_campaign_scheduler()))
+
     try:
         yield
     finally:
-        scheduler_task.cancel()
-        try:
-            await scheduler_task
-        except asyncio.CancelledError:
-            pass
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 def create_app() -> FastAPI:
@@ -74,6 +84,7 @@ def create_app() -> FastAPI:
 
     app.include_router(api_v1_router, prefix="/api/v1")
     app.include_router(webhooks_router, prefix="/webhooks")
+    app.include_router(meta_webhooks_router, prefix="/webhooks")
     if not settings.is_production:
         app.include_router(test_router, prefix="/dev")
 

@@ -15,6 +15,12 @@ class Service(TenantAwareEntity):
     Represents a service offered by a business (haircut, veterinary checkup, etc.).
     Services belong to a business and define duration, pricing, and description.
 
+    `capacity` is how many clients may book the same start time:
+      - capacity == 1 (default): one-to-one service. Any overlapping appointment
+        blocks the slot.
+      - capacity > 1: group class (gym class, workshop). The slot stays open
+        while booked < capacity.
+
     Lifecycle:
         Created → Active (default) → Inactive (soft delete)
     """
@@ -24,7 +30,13 @@ class Service(TenantAwareEntity):
     description: str | None = None
     duration_minutes: int = 30
     price: int | None = None  # in cents
+    capacity: int = 1
     is_active: bool = True
+
+    @property
+    def is_group_class(self) -> bool:
+        """True when several clients share the same start time."""
+        return self.capacity > 1
 
     @classmethod
     def create(
@@ -36,6 +48,7 @@ class Service(TenantAwareEntity):
         duration_minutes: int = 30,
         description: str | None = None,
         price: int | None = None,
+        capacity: int = 1,
     ) -> Service:
         """Factory for creating a new service."""
         if not name.strip():
@@ -44,6 +57,8 @@ class Service(TenantAwareEntity):
             raise BusinessRuleViolationError("Service duration must be at least 1 minute")
         if price is not None and price < 0:
             raise BusinessRuleViolationError("Service price cannot be negative")
+        if capacity < 1:
+            raise BusinessRuleViolationError("Service capacity must be at least 1")
 
         now = datetime.utcnow()
         return cls(
@@ -54,6 +69,7 @@ class Service(TenantAwareEntity):
             duration_minutes=duration_minutes,
             description=description,
             price=price,
+            capacity=capacity,
             is_active=True,
             created_at=now,
             updated_at=now,
@@ -66,6 +82,7 @@ class Service(TenantAwareEntity):
         description: str | None = None,
         duration_minutes: int | None = None,
         price: int | None = None,
+        capacity: int | None = None,
     ) -> None:
         """Update service details."""
         if name is not None:
@@ -82,6 +99,11 @@ class Service(TenantAwareEntity):
             if price < 0:
                 raise BusinessRuleViolationError("Service price cannot be negative")
             self.price = price
+
+        if capacity is not None:
+            if capacity < 1:
+                raise BusinessRuleViolationError("Service capacity must be at least 1")
+            self.capacity = capacity
 
         if description is not None:
             self.description = description

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,7 +15,11 @@ class ClientModel(Base):
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
     tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
-    whatsapp_number: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # E.164 format
+    # Empty for social clients until they hand over a phone number.
+    whatsapp_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)  # E.164 format
+    channel: Mapped[str] = mapped_column(String(20), nullable=False, default="whatsapp", server_default="whatsapp")
+    # Id assigned by the channel: phone (WhatsApp), PSID (Messenger), IGSID (Instagram)
+    external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -30,5 +34,8 @@ class ClientModel(Base):
     )
 
     __table_args__ = (
-        # Unique (tenant, whatsapp) ensures one client per number per tenant
+        # One client per channel identity per tenant. The same person writing
+        # from WhatsApp and Instagram is two rows on purpose: Meta gives no way
+        # to correlate a PSID with a phone number.
+        UniqueConstraint("tenant_id", "channel", "external_id", name="uq_clients_tenant_channel_external"),
     )

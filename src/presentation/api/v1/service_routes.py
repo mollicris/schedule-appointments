@@ -54,6 +54,12 @@ class CreateServiceRequest(BaseModel):
     duration_minutes: int = Field(default=30, ge=1, le=480)
     description: str | None = Field(default=None)
     price: int | None = Field(default=None, ge=0, description="Price in cents")
+    capacity: int = Field(
+        default=1,
+        ge=1,
+        le=500,
+        description="Clients allowed at the same start time. 1 = one-to-one, >1 = group class.",
+    )
 
 
 class UpdateServiceRequest(BaseModel):
@@ -61,6 +67,7 @@ class UpdateServiceRequest(BaseModel):
     duration_minutes: int | None = Field(default=None, ge=1, le=480)
     description: str | None = Field(default=None)
     price: int | None = Field(default=None, ge=0, description="Price in cents")
+    capacity: int | None = Field(default=None, ge=1, le=500)
 
 
 class ServiceDetailResponse(BaseModel):
@@ -72,6 +79,7 @@ class ServiceDetailResponse(BaseModel):
     price: int | None
     is_active: bool
     professional_ids: list[UUID] = []
+    capacity: int = 1
 
 
 class ServiceSummaryResponse(BaseModel):
@@ -81,6 +89,7 @@ class ServiceSummaryResponse(BaseModel):
     price: int | None
     is_active: bool
     professional_ids: list[UUID] = []
+    capacity: int = 1
 
 
 class AssignProfessionalsRequest(BaseModel):
@@ -96,6 +105,7 @@ class CreateServiceResponseData(BaseModel):
     service_id: UUID
     name: str
     duration_minutes: int
+    capacity: int = 1
 
 
 @router.post(
@@ -118,6 +128,7 @@ async def create_service(
             duration_minutes=payload.duration_minutes,
             description=payload.description,
             price=payload.price,
+            capacity=payload.capacity,
         )
     )
     return success_response(
@@ -127,6 +138,7 @@ async def create_service(
             service_id=output.service_id,
             name=output.name,
             duration_minutes=output.duration_minutes,
+            capacity=output.capacity,
         ),
     )
 
@@ -157,6 +169,7 @@ async def get_service(
             price=output.price,
             is_active=output.is_active,
             professional_ids=output.professional_ids,
+            capacity=output.capacity,
         ),
     )
 
@@ -191,6 +204,7 @@ async def list_services(
                 price=s.price,
                 is_active=s.is_active,
                 professional_ids=s.professional_ids,
+                capacity=s.capacity,
             )
             for s in output.services
         ],
@@ -221,6 +235,7 @@ async def update_service(
             description=payload.description,
             duration_minutes=payload.duration_minutes,
             price=payload.price,
+            capacity=payload.capacity,
         )
     )
     return success_response(
@@ -234,6 +249,7 @@ async def update_service(
             duration_minutes=output.duration_minutes,
             price=output.price,
             is_active=True,
+            capacity=output.capacity,
         ),
     )
 

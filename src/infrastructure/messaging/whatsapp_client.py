@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
+from src.domain.shared.channel import Channel
 from src.infrastructure.config.settings import get_settings
 
 log = structlog.get_logger(__name__)
@@ -14,7 +15,14 @@ class WhatsAppClient:
     Sends text messages and interactive button messages on behalf of a
     WhatsApp Business Number. Each business uses its own access_token
     and phone_number_id configured during onboarding.
+
+    Implements the ``MessagingProvider`` port (plus ``send_template``, which is
+    WhatsApp-only).
     """
+
+    @property
+    def channel(self) -> Channel:
+        return Channel.WHATSAPP
 
     def __init__(
         self,
@@ -69,6 +77,57 @@ class WhatsAppClient:
         }
         return await self._post(payload)
 
+    async def send_buttons(self, *, to: str, body: str, buttons: list[dict]) -> bool:
+        """MessagingProvider alias for ``send_interactive_buttons``."""
+        return await self.send_interactive_buttons(to=to, body=body, buttons=buttons)
+
+    async def send_template(
+        self,
+        *,
+        to: str,
+        template_name: str,
+        language_code: str = "es",
+        body_params: list[str] | None = None,
+    ) -> bool:
+        """Send an approved template message.
+
+        Templates are the ONLY way to write to a client outside Meta's 24-hour
+        customer service window — free-form text and interactive messages are
+        rejected there. Used by proactive campaigns (expiring membership,
+        win-back) and, eventually, reminders.
+
+        ``body_params`` fill the {{1}}, {{2}} … placeholders of the template body,
+        in order. Fails closed when no template name is configured, so a
+        half-configured deployment never silently sends nothing.
+        """
+        if not template_name:
+            log.warning("whatsapp_template_not_configured")
+            return False
+
+        components = []
+        if body_params:
+            components.append(
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": p} for p in body_params],
+                }
+            )
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code},
+            },
+        }
+        if components:
+            payload["template"]["components"] = components
+
+        return await self._post(payload)
+
     async def _post(self, payload: dict) -> bool:
         url = f"{self._base_url}/{self._phone_number_id}/messages"
         headers = {
@@ -79,10 +138,20 @@ class WhatsAppClient:
             try:
                 response = await client.post(url, json=payload, headers=headers)
                 if response.status_code not in (200, 201):
+                    # 401 here is almost always an expired access token — the most
+                    # common failure in dev, so it gets a hint instead of a raw dump.
+                    hint = ""
+                    if response.status_code == 401:
+                        hint = (
+                            "Access token rechazado por Meta (probablemente vencido). "
+                            "Regenéralo en API Setup y actualiza WHATSAPP_ACCESS_TOKEN "
+                            "(reinicia) o businesses.whatsapp_access_token (sin reiniciar)."
+                        )
                     log.warning(
                         "whatsapp_send_failed",
                         status=response.status_code,
-                        body=response.text[:200],
+                        body=response.text[:300],
+                        hint=hint,
                     )
                     return False
                 return True

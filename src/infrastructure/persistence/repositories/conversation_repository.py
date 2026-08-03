@@ -51,10 +51,10 @@ class ConversationRepositoryImpl(ConversationRepository):
         self._session.add(MessageMapper.to_model(message))
         await self._session.flush()
 
-    async def message_exists(self, whatsapp_message_id: str) -> bool:
+    async def message_exists(self, external_message_id: str) -> bool:
         row = await self._session.scalar(
             select(MessageModel.id).where(
-                MessageModel.whatsapp_message_id == whatsapp_message_id
+                MessageModel.external_message_id == external_message_id
             ).limit(1)
         )
         return row is not None

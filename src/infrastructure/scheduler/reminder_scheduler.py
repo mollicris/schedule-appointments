@@ -97,7 +97,7 @@ async def _process_one(session: AsyncSession, apt: AppointmentModel, settings) -
 
     wa = WhatsAppClient(
         phone_number_id=business.whatsapp_phone_number_id,
-        access_token=settings.whatsapp_access_token,
+        access_token=business.whatsapp_access_token or settings.whatsapp_access_token,
     )
     sent = await wa.send_interactive_buttons(
         to=client.whatsapp_number,

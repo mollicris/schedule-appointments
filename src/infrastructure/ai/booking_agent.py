@@ -5,10 +5,12 @@ from dataclasses import dataclass
 import structlog
 from anthropic import AsyncAnthropic
 
+from src.application.membership.get_client_membership import GetClientMembershipOutput
 from src.domain.business.business import Business
 from src.domain.conversation.conversation import Message
 from src.domain.service.service import Service
-from src.infrastructure.ai.agent_tools import TOOL_DEFINITIONS, ToolContext, execute_tool
+from src.domain.shared.channel import Channel
+from src.infrastructure.ai.agent_tools import ToolContext, execute_tool, tools_for_channel
 from src.infrastructure.ai.system_prompt import build_system_prompt
 from src.infrastructure.config.settings import get_settings
 
@@ -31,6 +33,8 @@ class AgentInput:
     user_message: str
     tool_ctx: ToolContext
     industry: str = ""
+    membership: GetClientMembershipOutput | None = None
+    channel: Channel = Channel.WHATSAPP
 
 
 class BookingAgent:
@@ -53,7 +57,11 @@ class BookingAgent:
             client_name=inp.client_name,
             is_returning_client=inp.is_returning_client,
             industry=inp.industry,
+            membership=inp.membership,
+            channel=inp.channel,
         )
+        # Social channels get a read-only toolset: no booking, no personal data.
+        tools = tools_for_channel(inp.channel)
 
         # Convert stored Message objects → Anthropic message dicts
         messages: list[dict] = _build_message_list(inp.history, inp.user_message)
@@ -63,7 +71,7 @@ class BookingAgent:
                 model=self._model,
                 max_tokens=self._max_tokens,
                 system=system,
-                tools=TOOL_DEFINITIONS,
+                tools=tools,
                 messages=messages,
             )
 

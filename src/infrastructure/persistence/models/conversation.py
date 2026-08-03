@@ -17,6 +17,7 @@ class ConversationModel(Base):
     tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     business_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
     client_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False, default="whatsapp", server_default="whatsapp")
     current_state: Mapped[str] = mapped_column(String(50), nullable=False, default="idle")
     collected_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)  # Extracted entities
     message_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -39,7 +40,7 @@ class MessageModel(Base):
     message_type: Mapped[str] = mapped_column(String(20), nullable=False, default="text")  # 'text', 'image', 'audio'
     content: Mapped[str] = mapped_column(Text, nullable=False)
     extra_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # e.g., audio transcription, image URL
-    whatsapp_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)  # Prevent duplicates
+    external_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)  # Prevent duplicates
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     __table_args__ = (
@@ -58,6 +59,8 @@ class HumanTransferModel(Base):
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     context_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    # "escalation" (bot handed over) or "lead" (social contact to call back)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="escalation", server_default="escalation")
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_by_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

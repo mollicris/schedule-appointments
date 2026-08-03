@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.domain.conversation.conversation import Conversation, Message
 from src.domain.conversation.value_objects import ConversationState
+from src.domain.shared.channel import Channel
 from src.infrastructure.persistence.models.conversation import ConversationModel, MessageModel
 
 
@@ -13,6 +14,7 @@ class ConversationMapper:
             tenant_id=conversation.tenant_id,
             business_id=conversation.business_id,
             client_id=conversation.client_id,
+            channel=conversation.channel.value,
             current_state=conversation.current_state.value,
             collected_data=conversation.collected_data,
             message_count=conversation.message_count,
@@ -30,6 +32,7 @@ class ConversationMapper:
             tenant_id=model.tenant_id,
             business_id=model.business_id,
             client_id=model.client_id,
+            channel=Channel(model.channel),
             current_state=ConversationState(model.current_state),
             collected_data=model.collected_data or {},
             message_count=model.message_count,
@@ -52,7 +55,7 @@ class MessageMapper:
             message_type=message.message_type,
             content=message.content,
             extra_data=message.extra_data,
-            whatsapp_message_id=message.whatsapp_message_id,
+            external_message_id=message.external_message_id,
             created_at=message.created_at,
         )
 
@@ -66,6 +69,6 @@ class MessageMapper:
             message_type=model.message_type,
             content=model.content,
             extra_data=model.extra_data,
-            whatsapp_message_id=model.whatsapp_message_id,
+            external_message_id=model.external_message_id,
             created_at=model.created_at,
         )

@@ -23,6 +23,7 @@ class GetServiceOutput:
     price: int | None
     is_active: bool
     professional_ids: list[UUID]
+    capacity: int = 1
 
 
 class GetServiceUseCase(UseCase[GetServiceInput, GetServiceOutput]):
@@ -48,4 +49,5 @@ class GetServiceUseCase(UseCase[GetServiceInput, GetServiceOutput]):
             price=service.price,
             is_active=service.is_active,
             professional_ids=professional_ids,
+            capacity=service.capacity,
         )

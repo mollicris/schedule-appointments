@@ -18,6 +18,11 @@ dependencies = [
     "python-jose[cryptography]",
     "httpx",
     "anthropic",
+    # Time zone database. Windows has none, and slim Linux images often ship
+    # without /usr/share/zoneinfo, so ZoneInfo("America/La_Paz") raises and every
+    # conversion silently falls back to UTC — which offsets business hours,
+    # available slots and every time quoted to the client.
+    "tzdata",
 ]
 
 [dependency-groups]

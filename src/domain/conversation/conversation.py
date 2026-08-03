@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from src.domain.conversation.value_objects import ConversationState
+from src.domain.shared.channel import Channel
 from src.domain.shared.entity import TenantAwareEntity
 
 
@@ -18,7 +19,9 @@ class Message:
     sender: str          # "client" | "bot"
     message_type: str    # "text" | "audio" | "image" | "interactive"
     content: str
-    whatsapp_message_id: str | None = None
+    # Id given by the channel: wamid (WhatsApp) or mid (Messenger/Instagram).
+    # Used for idempotency — Meta redelivers webhooks.
+    external_message_id: str | None = None
     extra_data: dict | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -30,7 +33,7 @@ class Message:
         conversation_id: UUID,
         content: str,
         message_type: str = "text",
-        whatsapp_message_id: str | None = None,
+        external_message_id: str | None = None,
         extra_data: dict | None = None,
     ) -> Message:
         return cls(
@@ -40,7 +43,7 @@ class Message:
             sender="client",
             message_type=message_type,
             content=content,
-            whatsapp_message_id=whatsapp_message_id,
+            external_message_id=external_message_id,
             extra_data=extra_data,
             created_at=datetime.utcnow(),
         )
@@ -71,13 +74,17 @@ class Message:
 class Conversation(TenantAwareEntity):
     """Conversation aggregate root.
 
-    Tracks the WhatsApp dialogue between a client and the bot for a specific
-    business. Carries the current state machine position and the entities
-    collected so far (service, date, time, etc.).
+    Tracks the dialogue between a client and the bot for a specific business on
+    one channel (WhatsApp, Messenger or Instagram). Carries the current state
+    machine position and the entities collected so far (service, date, time…).
+
+    Clients are per channel, so a conversation never mixes channels; the field
+    is kept for filtering and reporting.
     """
 
     business_id: UUID = UUID(int=0)
     client_id: UUID = UUID(int=0)
+    channel: Channel = Channel.WHATSAPP
     current_state: ConversationState = ConversationState.IDLE
     collected_data: dict = field(default_factory=dict)
     message_count: int = 0
@@ -92,6 +99,7 @@ class Conversation(TenantAwareEntity):
         tenant_id: UUID,
         business_id: UUID,
         client_id: UUID,
+        channel: Channel = Channel.WHATSAPP,
     ) -> Conversation:
         now = datetime.utcnow()
         return cls(
@@ -99,6 +107,7 @@ class Conversation(TenantAwareEntity):
             tenant_id=tenant_id,
             business_id=business_id,
             client_id=client_id,
+            channel=channel,
             current_state=ConversationState.IDLE,
             collected_data={},
             message_count=0,

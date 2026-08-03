@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from uuid import UUID
 
+from src.application.appointment.slot_occupancy import SlotEvaluation, evaluate_slot
 from src.application.shared.tenant_context import get_current_tenant
 from src.application.shared.unit_of_work import UnitOfWork
 from src.application.shared.use_case import UseCase
@@ -14,6 +15,7 @@ from src.domain.client.client import Client
 from src.domain.client.repository import ClientRepository
 from src.domain.professional.repository import ProfessionalRepository
 from src.domain.service.repository import ServiceRepository
+from src.domain.service.service import Service
 from src.domain.shared.errors import ConflictError, NotFoundError, ValidationError
 
 
@@ -40,6 +42,8 @@ class BookAppointmentOutput:
     duration_minutes: int
     status: AppointmentStatus
     ends_at: datetime
+    spots_left: int | None = None   # free places after this booking (group classes)
+    already_booked: bool = False    # True when the client already had this seat
 
 
 class BookAppointmentUseCase(UseCase[BookAppointmentInput, BookAppointmentOutput]):
@@ -48,8 +52,13 @@ class BookAppointmentUseCase(UseCase[BookAppointmentInput, BookAppointmentOutput
     Flow:
       1. Load and validate service (must exist, must be active).
       2. Find-or-create client by WhatsApp number.
-      3. Check real availability (race condition guard: no overlapping slot).
+      3. Lock the service row and re-check availability inside the transaction
+         (race-condition guard, and capacity guard for group classes).
       4. Create and persist Appointment in PENDING status.
+
+    Availability is decided by ``evaluate_slot`` — the same helper that produced
+    the offered slots — so a slot the agent offered is still validated here
+    against concurrent bookings.
     """
 
     def __init__(
@@ -109,29 +118,33 @@ class BookAppointmentUseCase(UseCase[BookAppointmentInput, BookAppointmentOutput
                 )
                 await self._clients.add(client)
 
-            # 3. Check availability — prevent double-booking (race condition guard)
-            # Note: This is a best-effort check; database constraints ensure no true duplicates
-            from datetime import timedelta
-            slot_end = input_data.scheduled_at + timedelta(minutes=service.duration_minutes)
-            try:
-                conflicts = await self._appointments.list_active_in_range(
-                    business_id=input_data.business_id,
-                    start=input_data.scheduled_at,
-                    end=slot_end,
-                    professional_id=input_data.professional_id,
+            # 3. Idempotency: the same client, service and start time is the same
+            # booking. A client confirming twice — or an agent re-issuing the call
+            # in a later turn — must not take two seats in the same class.
+            existing = await self._appointments.get_active_for_client_at(
+                client_id=client.id,
+                service_id=service.id,
+                scheduled_at=input_data.scheduled_at,
+            )
+            if existing is not None:
+                await self._uow.commit()
+                return BookAppointmentOutput(
+                    appointment_id=existing.id,
+                    business_id=existing.business_id,
+                    service_id=existing.service_id,
+                    client_id=existing.client_id,
+                    professional_id=existing.professional_id,
+                    scheduled_at=existing.scheduled_at,
+                    duration_minutes=existing.duration_minutes,
+                    status=existing.status,
+                    ends_at=existing.ends_at,
+                    already_booked=True,
                 )
-                if conflicts:
-                    raise ConflictError(
-                        "The requested time slot is no longer available. Please choose another time."
-                    )
-            except Exception as e:
-                # If availability check fails, still allow booking
-                # Database constraints will prevent true duplicates
-                if "no longer available" in str(e):
-                    raise
-                # Log but don't fail on other availability check errors
 
-            # 4. Book
+            # 4. Re-check availability inside the transaction (capacity + races)
+            evaluation = await self._ensure_slot_available(input_data, service)
+
+            # 5. Book
             appointment = Appointment.book(
                 tenant_id=tenant.tenant_id,
                 business_id=input_data.business_id,
@@ -160,6 +173,47 @@ class BookAppointmentUseCase(UseCase[BookAppointmentInput, BookAppointmentOutput
             duration_minutes=appointment.duration_minutes,
             status=appointment.status,
             ends_at=appointment.ends_at,
+            spots_left=(evaluation.remaining - 1) if service.capacity > 1 else None,
+        )
+
+    async def _ensure_slot_available(
+        self,
+        input_data: BookAppointmentInput,
+        service: Service,
+    ) -> SlotEvaluation:
+        """Re-check the slot inside the transaction; raise if it cannot be booked.
+
+        Locking the service row first serialises concurrent bookings of the same
+        group class, so the capacity count cannot be stale.
+        """
+        await self._services.lock_for_update(service.id)
+
+        slot_end = input_data.scheduled_at + timedelta(minutes=service.duration_minutes)
+        booked = await self._appointments.list_active_in_range(
+            business_id=input_data.business_id,
+            start=input_data.scheduled_at,
+            end=slot_end,
+            professional_id=input_data.professional_id,
+        )
+        capacity_by_service = await self._services.get_capacity_map(
+            list({apt.service_id for apt in booked} | {service.id})
+        )
+        evaluation = evaluate_slot(
+            slot_start=input_data.scheduled_at,
+            slot_end=slot_end,
+            service_id=service.id,
+            capacity=service.capacity,
+            booked=booked,
+            capacity_by_service=capacity_by_service,
+        )
+
+        if evaluation.is_bookable:
+            return evaluation
+
+        if service.capacity > 1 and not evaluation.blocked:
+            raise ConflictError("This class is already full. Please choose another time.")
+        raise ConflictError(
+            "The requested time slot is no longer available. Please choose another time."
         )
 
     def _validate_input(self, data: BookAppointmentInput) -> None:

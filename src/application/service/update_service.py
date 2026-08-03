@@ -16,6 +16,7 @@ class UpdateServiceInput:
     description: str | None = None
     duration_minutes: int | None = None
     price: int | None = None
+    capacity: int | None = None
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,7 @@ class UpdateServiceOutput:
     name: str
     duration_minutes: int
     price: int | None
+    capacity: int = 1
 
 
 class UpdateServiceUseCase(UseCase[UpdateServiceInput, UpdateServiceOutput]):
@@ -46,6 +48,7 @@ class UpdateServiceUseCase(UseCase[UpdateServiceInput, UpdateServiceOutput]):
                 description=input_data.description,
                 duration_minutes=input_data.duration_minutes,
                 price=input_data.price,
+                capacity=input_data.capacity,
             )
 
             await self._services.update(service)
@@ -56,6 +59,7 @@ class UpdateServiceUseCase(UseCase[UpdateServiceInput, UpdateServiceOutput]):
             name=service.name,
             duration_minutes=service.duration_minutes,
             price=service.price,
+            capacity=service.capacity,
         )
 
     def _validate_input(self, data: UpdateServiceInput) -> None:
@@ -65,3 +69,5 @@ class UpdateServiceUseCase(UseCase[UpdateServiceInput, UpdateServiceOutput]):
             raise ValidationError("Service duration must be at least 1 minute")
         if data.price is not None and data.price < 0:
             raise ValidationError("Service price cannot be negative")
+        if data.capacity is not None and data.capacity < 1:
+            raise ValidationError("Service capacity must be at least 1")

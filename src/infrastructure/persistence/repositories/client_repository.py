@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.shared.tenant_context import get_current_tenant
 from src.domain.client.client import Client
 from src.domain.client.repository import ClientRepository
+from src.domain.shared.channel import Channel
 from src.infrastructure.persistence.mappers.client_mapper import ClientMapper
 from src.infrastructure.persistence.models.client import ClientModel
 
@@ -31,6 +32,19 @@ class ClientRepositoryImpl(ClientRepository):
         row = await self._session.scalar(
             select(ClientModel).where(
                 ClientModel.whatsapp_number == whatsapp_number,
+                ClientModel.channel == Channel.WHATSAPP.value,
+                ClientModel.tenant_id == tenant.tenant_id,
+                ClientModel.is_active.is_(True),
+            )
+        )
+        return ClientMapper.to_domain(row) if row else None
+
+    async def get_by_channel_id(self, channel: Channel, external_id: str) -> Client | None:
+        tenant = get_current_tenant()
+        row = await self._session.scalar(
+            select(ClientModel).where(
+                ClientModel.channel == channel.value,
+                ClientModel.external_id == external_id,
                 ClientModel.tenant_id == tenant.tenant_id,
                 ClientModel.is_active.is_(True),
             )

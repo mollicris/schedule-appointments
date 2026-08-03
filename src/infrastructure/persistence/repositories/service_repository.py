@@ -34,6 +34,34 @@ class ServiceRepositoryImpl(ServiceRepository):
         row = await self._session.scalar(stmt)
         return ServiceMapper.toPersistence(row) if row else None
 
+    async def get_capacity_map(self, service_ids: list[UUID]) -> dict[UUID, int]:
+        if not service_ids:
+            return {}
+        tenant = get_current_tenant()
+        stmt = select(ServiceModel.id, ServiceModel.capacity).where(
+            and_(
+                ServiceModel.id.in_(service_ids),
+                ServiceModel.tenant_id == tenant.tenant_id,
+            )
+        )
+        rows = await self._session.execute(stmt)
+        return {row.id: row.capacity for row in rows}
+
+    async def lock_for_update(self, service_id: UUID) -> Service | None:
+        tenant = get_current_tenant()
+        stmt = (
+            select(ServiceModel)
+            .where(
+                and_(
+                    ServiceModel.id == service_id,
+                    ServiceModel.tenant_id == tenant.tenant_id,
+                )
+            )
+            .with_for_update()
+        )
+        row = await self._session.scalar(stmt)
+        return ServiceMapper.toPersistence(row) if row else None
+
     async def list_by_business(self, business_id: UUID, limit: int = 50, offset: int = 0) -> list[Service]:
         tenant = get_current_tenant()
         stmt = (

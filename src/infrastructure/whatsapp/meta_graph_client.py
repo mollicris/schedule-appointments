@@ -36,15 +36,20 @@ class MetaGraphClient:
 
         Called immediately after the Embedded Signup popup returns a code.
         """
+        params = {
+            "client_id": self._app_id,
+            "client_secret": self._app_secret,
+            "code": code,
+        }
+        # Embedded Signup exchanges the code WITHOUT redirect_uri; sending it
+        # empty makes Meta reject the exchange.
+        if redirect_uri:
+            params["redirect_uri"] = redirect_uri
+
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
-                f"{self.BASE_URL}/oauth/access_token",
-                params={
-                    "client_id": self._app_id,
-                    "client_secret": self._app_secret,
-                    "redirect_uri": redirect_uri,
-                    "code": code,
-                },
+                f"{self.BASE_URL}/{self._version}/oauth/access_token",
+                params=params,
             )
         data = resp.json()
         if "error" in data:

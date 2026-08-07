@@ -65,6 +65,20 @@ class HumanTransferRepositoryImpl(HumanTransferRepository):
         )
         return _to_domain(row) if row else None
 
+    async def get_pending_lead(self, conversation_id: UUID) -> HumanTransfer | None:
+        tenant = get_current_tenant()
+        row = await self._session.scalar(
+            select(HumanTransferModel)
+            .where(
+                HumanTransferModel.conversation_id == conversation_id,
+                HumanTransferModel.tenant_id == tenant.tenant_id,
+                HumanTransferModel.kind == "lead",
+                HumanTransferModel.status == "pending",
+            )
+            .order_by(HumanTransferModel.created_at.desc())
+        )
+        return _to_domain(row) if row else None
+
     async def list_by_business(
         self,
         business_id: UUID,

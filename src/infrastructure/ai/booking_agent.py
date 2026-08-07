@@ -48,7 +48,21 @@ class BookingAgent:
         settings = get_settings()
         self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
         self._model = settings.anthropic_model_reasoning
+        self._fast_model = settings.anthropic_model_fast
+        self._fast_on_social = settings.anthropic_fast_on_social
+        self._prompt_cache = settings.anthropic_prompt_cache
         self._max_tokens = settings.anthropic_max_tokens
+
+    def _model_for(self, channel: Channel) -> str:
+        """Booking runs on the reasoning model; social enquiries on the fast one.
+
+        The split follows what the channel is allowed to do, not how hard the
+        message looks: on social the agent cannot touch an appointment, so a
+        weaker answer stays a weaker answer.
+        """
+        if self._fast_on_social and channel.is_social:
+            return self._fast_model
+        return self._model
 
     async def run(self, inp: AgentInput) -> str:
         system = build_system_prompt(
@@ -62,15 +76,16 @@ class BookingAgent:
         )
         # Social channels get a read-only toolset: no booking, no personal data.
         tools = tools_for_channel(inp.channel)
+        model = self._model_for(inp.channel)
 
         # Convert stored Message objects → Anthropic message dicts
         messages: list[dict] = _build_message_list(inp.history, inp.user_message)
 
         for iteration in range(_MAX_ITERATIONS):
             response = await self._client.messages.create(
-                model=self._model,
+                model=model,
                 max_tokens=self._max_tokens,
-                system=system,
+                system=self._system_param(system),
                 tools=tools,
                 messages=messages,
             )
@@ -78,8 +93,11 @@ class BookingAgent:
             log.debug(
                 "agent_iteration",
                 iteration=iteration,
+                model=model,
                 stop_reason=response.stop_reason,
                 content_blocks=len(response.content),
+                cache_read=getattr(response.usage, "cache_read_input_tokens", None),
+                cache_written=getattr(response.usage, "cache_creation_input_tokens", None),
             )
 
             # Append the assistant's full response to the running history
@@ -115,6 +133,18 @@ class BookingAgent:
             client_id=str(inp.tool_ctx.client_id),
         )
         return _FALLBACK_REPLY
+
+    def _system_param(self, system: str) -> str | list[dict]:
+        """Mark the system prompt as cacheable.
+
+        The breakpoint covers everything ahead of it in the prompt — the tool
+        schemas as well as this text — and both are byte-identical on every
+        turn of a conversation. Below Anthropic's minimum cacheable length the
+        marker is simply ignored, so short prompts cost nothing extra.
+        """
+        if not self._prompt_cache:
+            return system
+        return [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

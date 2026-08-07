@@ -601,23 +601,43 @@ async def _capture_lead(inputs: dict, ctx: ToolContext) -> str:
         client.record_contact_details(name=nombre or None, phone=telefono)
         await ctx.clients.update(client)
 
-    # 2. Queue it for reception
+    # 2. Queue it for reception — one enquiry, one row
+    reason = f"Lead de {ctx.channel.label_es}: {interes or 'sin detalle'}"
+    snapshot = [{"sender": "lead", "content": f"{nombre} · {telefono} · {interes}"}]
+    already_queued = False
     if ctx.human_transfers is not None:
-        transfer = HumanTransfer.create(
-            tenant_id=ctx.tenant_id,
-            business_id=ctx.business_id,
-            conversation_id=ctx.conversation_id,
-            client_id=ctx.client_id,
-            reason=f"Lead de {ctx.channel.label_es}: {interes or 'sin detalle'}",
-            context_snapshot=[
-                {"sender": "lead", "content": f"{nombre} · {telefono} · {interes}"}
-            ],
-            kind="lead",
-        )
-        await ctx.human_transfers.add(transfer)
+        existing = await ctx.human_transfers.get_pending_lead(ctx.conversation_id)
+        if existing is not None:
+            existing.refresh_lead(reason=reason, context_snapshot=snapshot)
+            await ctx.human_transfers.update(existing)
+            already_queued = True
+        else:
+            await ctx.human_transfers.add(
+                HumanTransfer.create(
+                    tenant_id=ctx.tenant_id,
+                    business_id=ctx.business_id,
+                    conversation_id=ctx.conversation_id,
+                    client_id=ctx.client_id,
+                    reason=reason,
+                    context_snapshot=snapshot,
+                    kind="lead",
+                )
+            )
 
-    # 3. Tell reception right away
+    # 3. Tell reception right away — but only the first time, so a retry does
+    #    not buzz their phone again for the same person.
     delivered = False
+    if already_queued:
+        log.info("lead_already_queued", client_id=str(ctx.client_id))
+        return json.dumps({
+            "status": "lead_ya_registrado",
+            "instruccion": (
+                "Este contacto ya estaba tomado en esta conversación. No lo anuncies "
+                "de nuevo: seguí la charla desde donde estaba."
+            ),
+            "keep_talking": True,
+        })
+
     if ctx.owner_whatsapp and ctx.staff_notifier is not None:
         body = (
             f"🌟 *{ctx.business_name}* — nuevo contacto por {ctx.channel.label_es}\n\n"

@@ -242,6 +242,24 @@ def _event_id(event: dict, sender_id: str) -> str:
     return f"pb_{sender_id}_{event.get('timestamp', '')}"
 
 
+# What the agent sees when a DM carries something other than text. A bare
+# "[template]" told it nothing, so it re-ran its previous action and queued the
+# same lead twice; a sentence it can read keeps the conversation on track.
+# "template" and "share" are what Instagram sends for a shared post or reel —
+# by far the most common non-text DM there.
+_ATTACHMENT_DESCRIPTIONS = {
+    "template": "[el cliente compartió una publicación]",
+    "share": "[el cliente compartió una publicación]",
+    "story_mention": "[el cliente te mencionó en su historia]",
+    "image": "[el cliente envió una imagen]",
+    "video": "[el cliente envió un video]",
+    "audio": "[el cliente envió un audio]",
+    "file": "[el cliente envió un archivo]",
+    "location": "[el cliente compartió su ubicación]",
+    "fallback": "[el cliente envió un enlace]",
+}
+
+
 def _extract_content(event: dict) -> tuple[str | None, dict | None, str]:
     """Turn one Meta event into (content, extra_data, message_type).
 
@@ -267,7 +285,11 @@ def _extract_content(event: dict) -> tuple[str | None, dict | None, str]:
     attachments = message.get("attachments") or []
     if attachments:
         kind = attachments[0].get("type", "file")
-        return f"[{kind}]", {"attachment_type": kind}, kind if kind in ("image", "audio") else "text"
+        return (
+            _ATTACHMENT_DESCRIPTIONS.get(kind, f"[el cliente envió un archivo: {kind}]"),
+            {"attachment_type": kind},
+            kind if kind in ("image", "audio") else "text",
+        )
 
     return None, None, "text"
 

@@ -21,7 +21,11 @@ from src.domain.shared.errors import ConflictError
 
 TENANT_ID = uuid4()
 BUSINESS_ID = uuid4()
-SLOT = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+# Relative to today on purpose: Appointment.create refuses a slot in the past,
+# so a hard-coded date turns green tests red the moment it goes by.
+SLOT = (datetime.now(timezone.utc) + timedelta(days=7)).replace(
+    hour=18, minute=0, second=0, microsecond=0
+)
 
 
 class MockUnitOfWork(UnitOfWork):

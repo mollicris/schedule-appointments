@@ -113,6 +113,18 @@ class MockHumanTransferRepository:
     async def add(self, transfer) -> None:
         self.transfers.append(transfer)
 
+    async def get_pending_lead(self, conversation_id):
+        for t in reversed(self.transfers):
+            if t.conversation_id == conversation_id and t.kind == "lead" and t.status == "pending":
+                return t
+        return None
+
+    async def update(self, transfer) -> None:
+        for i, t in enumerate(self.transfers):
+            if t.id == transfer.id:
+                self.transfers[i] = transfer
+                return
+
 
 class MockWhatsAppNotifier:
     """Stands in for the WhatsApp provider used for staff alerts."""
@@ -186,6 +198,52 @@ async def test_capture_lead_stores_the_phone_queues_it_and_alerts_over_whatsapp(
     assert notifier.sent and notifier.sent[0][0] == "59179559800"
     assert "Instagram" in notifier.sent[0][1]
     assert result["keep_talking"] is True
+
+
+@pytest.mark.asyncio
+async def test_capture_lead_twice_leaves_one_row_and_alerts_reception_once():
+    """A stray attachment made the agent re-run the tool and reception saw the
+    same person twice. One enquiry has to stay one row."""
+    client = Client.create(
+        tenant_id=TENANT_ID, name="ig_user", channel=Channel.INSTAGRAM, external_id="psid_dup"
+    )
+    clients = MockClientRepository(client)
+    transfers = MockHumanTransferRepository()
+    notifier = MockWhatsAppNotifier()
+    ctx = _social_context(clients, transfers, notifier)
+    inputs = {"nombre": "Julián", "telefono": "69334673", "interes": "clase grupal"}
+
+    first = json.loads(await execute_tool("capture_lead", inputs, ctx))
+    second = json.loads(await execute_tool("capture_lead", inputs, ctx))
+
+    assert len(transfers.transfers) == 1, "el lead no debe duplicarse en la cola"
+    assert len(notifier.sent) == 1, "recepción no debe recibir dos avisos"
+    assert first["status"] == "lead_registrado"
+    assert second["status"] == "lead_ya_registrado"
+    # the bot keeps chatting either way
+    assert second["keep_talking"] is True
+    assert ctx.escalation_triggered is False
+
+
+@pytest.mark.asyncio
+async def test_capture_lead_updates_a_corrected_phone_without_queueing_again():
+    client = Client.create(
+        tenant_id=TENANT_ID, name="ig_user", channel=Channel.INSTAGRAM, external_id="psid_fix"
+    )
+    clients = MockClientRepository(client)
+    transfers = MockHumanTransferRepository()
+    ctx = _social_context(clients, transfers, MockWhatsAppNotifier())
+
+    await execute_tool(
+        "capture_lead", {"nombre": "Ana", "telefono": "111", "interes": "yoga"}, ctx
+    )
+    await execute_tool(
+        "capture_lead", {"nombre": "Ana", "telefono": "222", "interes": "yoga los martes"}, ctx
+    )
+
+    assert len(transfers.transfers) == 1
+    assert clients.client.phone == "222", "el teléfono corregido tiene que quedar guardado"
+    assert "yoga los martes" in transfers.transfers[0].reason
 
 
 @pytest.mark.asyncio

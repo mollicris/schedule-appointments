@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     anthropic_model_fast: str = "claude-haiku-4-5-20251001"
     anthropic_max_tokens: int = 500
     anthropic_temperature: float = 0.3
+    # Social channels are read-only: they inform and take a phone number, they
+    # never book, cancel or move an appointment. A worse-worded answer is the
+    # worst that can happen there, so the cheaper model earns its keep. Set to
+    # false to put every channel back on the reasoning model.
+    anthropic_fast_on_social: bool = True
+    # System prompt and tool schemas repeat verbatim on every turn; caching
+    # them costs a tenth of re-sending them. Off only for debugging.
+    anthropic_prompt_cache: bool = True
 
     openai_api_key: str = ""
     openai_whisper_model: str = "whisper-1"

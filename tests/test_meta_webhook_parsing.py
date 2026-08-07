@@ -100,17 +100,40 @@ def test_postback_becomes_a_button_id():
     assert message_type == "interactive"
 
 
-def test_attachment_becomes_a_placeholder():
-    event = {
+def _attachment_event(kind: str) -> dict:
+    return {
         "sender": {"id": "psid_123"},
-        "message": {"mid": "m_1", "attachments": [{"type": "image", "payload": {"url": "..."}}]},
+        "message": {"mid": "m_1", "attachments": [{"type": kind, "payload": {"url": "..."}}]},
     }
 
-    content, extra, message_type = _extract_content(event)
 
-    assert content == "[image]"
+def test_attachment_becomes_a_placeholder():
+    content, extra, message_type = _extract_content(_attachment_event("image"))
+
+    assert content == "[el cliente envió una imagen]"
     assert extra == {"attachment_type": "image"}
     assert message_type == "image"
+
+
+def test_a_shared_post_is_described_instead_of_labelled():
+    """Instagram sends type "template" when someone shares a post or reel.
+
+    The bare "[template]" this used to produce told the agent nothing, so it
+    repeated its previous action — in production that queued the same lead a
+    second time.
+    """
+    for kind in ("template", "share"):
+        content, extra, message_type = _extract_content(_attachment_event(kind))
+
+        assert content == "[el cliente compartió una publicación]"
+        assert extra == {"attachment_type": kind}
+        assert message_type == "text"
+
+
+def test_an_unknown_attachment_type_still_says_something_readable():
+    content, _, _ = _extract_content(_attachment_event("sticker"))
+
+    assert content == "[el cliente envió un archivo: sticker]"
 
 
 # ── Idempotency id ───────────────────────────────────────────────────────────

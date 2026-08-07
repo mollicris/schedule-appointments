@@ -54,6 +54,18 @@ class HumanTransfer(TenantAwareEntity):
             updated_at=now,
         )
 
+    def refresh_lead(self, *, reason: str | None, context_snapshot: list | None = None) -> None:
+        """Fold new details into a lead reception has not picked up yet.
+
+        The client corrected their phone, or the agent called the tool twice for
+        the same enquiry: either way the queue should hold one row, the latest.
+        """
+        if reason:
+            self.reason = reason
+        if context_snapshot:
+            self.context_snapshot = context_snapshot
+        self.updated_at = datetime.now(timezone.utc)
+
     def resolve(self, resolved_by_id: UUID) -> None:
         self.status = "resolved"
         self.resolved_at = datetime.now(timezone.utc)

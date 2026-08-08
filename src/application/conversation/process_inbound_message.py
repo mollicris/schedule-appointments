@@ -23,6 +23,7 @@ from src.domain.conversation.human_transfer import HumanTransfer
 from src.domain.conversation.human_transfer_repository import HumanTransferRepository
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.conversation.value_objects import ConversationState
+from src.domain.membership.membership_plan import MembershipPlan
 from src.domain.membership.repository import MembershipPlanRepository, MembershipRepository
 from src.domain.professional.repository import ProfessionalRepository
 from src.domain.service.repository import ServiceRepository
@@ -261,6 +262,7 @@ class ProcessInboundMessageUseCase:
                 industry=input_data.industry,
                 membership=membership,
                 channel=channel,
+                plans=await self._load_plans(input_data.business_id),
             )
             try:
                 reply_text = await self._agent.run(agent_input)
@@ -356,6 +358,21 @@ class ProcessInboundMessageUseCase:
             escalated_at = escalated_at.replace(tzinfo=timezone.utc)
 
         return datetime.now(timezone.utc) - escalated_at >= timedelta(minutes=minutes)
+
+    async def _load_plans(self, business_id: UUID) -> list[MembershipPlan]:
+        """The business's plan catalogue for the prompt.
+
+        Preloaded rather than left to a tool call: the agent used to answer
+        "¿qué ofrecen?" from the services already in the prompt and never
+        reached for the plans. Degrades to an empty list, which renders nothing.
+        """
+        if self._membership_plans is None:
+            return []
+        try:
+            return await self._membership_plans.list_by_business(business_id)
+        except Exception:
+            log.exception("membership_plans_lookup_failed", business_id=str(business_id))
+            return []
 
     async def _load_membership(
         self,

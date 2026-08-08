@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from src.application.membership.get_client_membership import GetClientMembershipOutput
 from src.domain.business.business import Business
+from src.domain.membership.membership_plan import MembershipPlan
 from src.domain.service.service import Service
 from src.domain.shared.channel import Channel
 
@@ -38,6 +39,35 @@ _INDUSTRY_HINTS: dict[str, str] = {
         "  2. Si es primera consulta o seguimiento\n"
         "Sé discreto y empático con el tema de salud."
     ),
+    "peluqueria": (
+        "DATOS ADICIONALES PARA ESTE NEGOCIO (peluquería / estética):\n"
+        "PREGUNTA SIEMPRE CON QUÉ ESTILISTA se quiere atender, u ofrecé el primero "
+        "disponible si le da igual. La mayoría vuelve con la misma persona y darle "
+        "otra sin avisar es el reclamo más común.\n"
+        "Las duraciones son MUY distintas entre servicios: un corte son minutos y un "
+        "color o unas mechas son horas. Nunca ofrezcas un hueco corto para un servicio "
+        "largo — usá la duración real del servicio que pidió.\n"
+        "Si preguntan el precio de color, mechas o alisado: depende del largo y del "
+        "estado del cabello. Da el precio de referencia, aclará que puede variar y "
+        "ofrecé confirmarlo en el salón. No inventes un precio cerrado.\n"
+        "Si es primera vez para un servicio de color, preguntá el largo del cabello "
+        "(corto, media melena o largo): cambia la duración y el precio.\n"
+        "Si quiere el mismo color o corte de la vez pasada y no lo tenés en los datos, "
+        "no lo adivines: decile que recepción lo confirma con su ficha."
+    ),
+    "restaurantes": (
+        "DATOS ADICIONALES PARA ESTE NEGOCIO (restaurante / bolos):\n"
+        "SIEMPRE pregunta PARA CUÁNTAS PERSONAS antes de confirmar una mesa o una "
+        "pista: es el dato que decide qué reservar. Si no lo dice, pídelo primero.\n"
+        "Elegí el servicio según ese número: no ofrezcas una mesa de 2 para un grupo "
+        "de 6.\n"
+        "Las pistas de bolos y las mesas tienen cupo limitado: al ofrecer horarios "
+        "menciona lo que queda solo si son 3 o menos ('queda 1 pista').\n"
+        "Si es un cumpleaños, evento o reunión de empresa, ofrecé el paquete que "
+        "corresponda con su precio en vez de una mesa suelta.\n"
+        "Si preguntan por menú, carta o platos concretos: no los inventes. Usá "
+        "notify_staff para que recepción le responda y seguí atendiendo."
+    ),
     "gimnasios": (
         "DATOS ADICIONALES PARA ESTE NEGOCIO (gimnasio / entrenamiento):\n"
         "Si el servicio es una sesión personalizada, pregunta brevemente el objetivo "
@@ -65,6 +95,7 @@ def build_system_prompt(
     industry: str = "",
     membership: GetClientMembershipOutput | None = None,
     channel: Channel = Channel.WHATSAPP,
+    plans: list[MembershipPlan] | None = None,
 ) -> str:
     # Everything the client hears must be in the business's local time: a gym in
     # La Paz says "a las 10" meaning 10:00 local, not 10:00 UTC.
@@ -90,6 +121,7 @@ def build_system_prompt(
         if hint:
             industry_block = f"\n{hint}\n"
 
+    plans_block = _format_plans(plans)
     membership_block = _format_membership(membership)
     channel_block = _format_channel(channel, business)
 
@@ -101,7 +133,7 @@ FECHA Y HORA ACTUAL: {today.strftime("%Y-%m-%d %H:%M")} ({today_name}) — hora 
 
 SERVICIOS DISPONIBLES:
 {services_block}
-{membership_block}{channel_block}{industry_block}
+{plans_block}{membership_block}{channel_block}{industry_block}
 INSTRUCCIONES GENERALES:
 - Responde SIEMPRE en el idioma del cliente (español, portugués o inglés).
 - Mensajes BREVES: máximo 3 líneas por respuesta. Sin listas largas.
@@ -150,6 +182,37 @@ def _format_services(services: list[Service]) -> str:
             f"  • {s.name} ({s.duration_minutes} min){price_str}{capacity_str}  [id: {s.id}]"
         )
     return "\n".join(lines)
+
+
+_PERIOD_ES = {
+    "monthly": "al mes",
+    "quarterly": "por trimestre",
+    "semiannual": "por semestre",
+    "annual": "al año",
+}
+
+
+def _format_plans(plans: list[MembershipPlan] | None) -> str:
+    """The plan catalogue, preloaded like the services list.
+
+    Behind a tool call the agent only reached for it when someone said the word
+    "plan": an open "¿qué ofrecen?" got answered from the services already in
+    front of it. A business with no plans renders nothing and reads as before.
+    """
+    if not plans:
+        return ""
+
+    lines = []
+    for p in plans:
+        period = _PERIOD_ES.get(p.billing_period.value, p.billing_period.value)
+        price = f"${p.price / 100:.0f} {period}" if p.price else period
+        lines.append(f"  • {p.name} — {price}")
+
+    return (
+        "\nPLANES DE MEMBRESÍA:\n"
+        + "\n".join(lines)
+        + "\nMenciónalos cuando pregunten qué ofrecen, no solo cuando digan «plan».\n"
+    )
 
 
 def _format_channel(channel: Channel, business: Business) -> str:

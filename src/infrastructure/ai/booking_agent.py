@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import structlog
 from anthropic import AsyncAnthropic
@@ -8,6 +8,7 @@ from anthropic import AsyncAnthropic
 from src.application.membership.get_client_membership import GetClientMembershipOutput
 from src.domain.business.business import Business
 from src.domain.conversation.conversation import Message
+from src.domain.membership.membership_plan import MembershipPlan
 from src.domain.service.service import Service
 from src.domain.shared.channel import Channel
 from src.infrastructure.ai.agent_tools import ToolContext, execute_tool, tools_for_channel
@@ -35,6 +36,7 @@ class AgentInput:
     industry: str = ""
     membership: GetClientMembershipOutput | None = None
     channel: Channel = Channel.WHATSAPP
+    plans: list[MembershipPlan] = field(default_factory=list)
 
 
 class BookingAgent:
@@ -73,6 +75,7 @@ class BookingAgent:
             industry=inp.industry,
             membership=inp.membership,
             channel=inp.channel,
+            plans=inp.plans,
         )
         # Social channels get a read-only toolset: no booking, no personal data.
         tools = tools_for_channel(inp.channel)

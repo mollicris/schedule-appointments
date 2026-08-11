@@ -14,9 +14,12 @@ class Appointment(TenantAwareEntity):
     """Appointment aggregate root.
 
     Represents a booked service slot at a business. The lifecycle is:
-        PENDING → CONFIRMED → COMPLETED | NO_SHOW
+        PENDING | CONFIRMED | RESCHEDULED → COMPLETED | NO_SHOW
         PENDING | CONFIRMED → CANCELLED
-        PENDING | CONFIRMED → RESCHEDULED (creates a new Appointment)
+        PENDING | CONFIRMED → RESCHEDULED (moved in place, same row)
+
+    Closing it with ``complete()`` records what was actually collected, which is
+    what the revenue reports read — not the service's current price.
     """
 
     business_id: UUID = UUID(int=0)
@@ -30,6 +33,8 @@ class Appointment(TenantAwareEntity):
     cancelled_reason: str | None = None
     cancelled_at: datetime | None = None
     reminder_sent_at: datetime | None = None
+    amount_charged: int | None = None    # in cents, written when it is closed
+    completed_at: datetime | None = None
 
     @classmethod
     def book(
@@ -79,7 +84,7 @@ class Appointment(TenantAwareEntity):
                 f"Cannot confirm appointment in status '{self.status}'"
             )
         self.status = AppointmentStatus.CONFIRMED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def cancel(self, reason: str | None = None) -> None:
         if self.status in (AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED):
@@ -88,8 +93,8 @@ class Appointment(TenantAwareEntity):
             )
         self.status = AppointmentStatus.CANCELLED
         self.cancelled_reason = reason
-        self.cancelled_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.cancelled_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
 
     def reschedule(
         self,
@@ -109,18 +114,39 @@ class Appointment(TenantAwareEntity):
                 raise BusinessRuleViolationError("Duration must be at least 1 minute")
             self.duration_minutes = new_duration_minutes
         self.status = AppointmentStatus.RESCHEDULED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
-    def complete(self) -> None:
-        if self.status != AppointmentStatus.CONFIRMED:
+    # A booking only leaves PENDING if the client taps the reminder button, and
+    # rescheduling parks it in RESCHEDULED. Requiring CONFIRMED here would reject
+    # almost every real appointment, so anything not already closed can be closed.
+    _CLOSEABLE = (
+        AppointmentStatus.PENDING,
+        AppointmentStatus.CONFIRMED,
+        AppointmentStatus.RESCHEDULED,
+    )
+
+    def complete(self, amount_charged: int) -> None:
+        """Close the appointment with what was actually collected.
+
+        The amount is required rather than defaulting to the service price: zero
+        means "no charge" and saying so is a deliberate act. A silent null is a
+        number nobody can justify when the report is audited months later.
+        """
+        if self.status not in self._CLOSEABLE:
             raise BusinessRuleViolationError(
                 f"Cannot complete appointment in status '{self.status}'"
             )
+        if amount_charged < 0:
+            raise BusinessRuleViolationError("Amount charged cannot be negative")
+
+        now = datetime.now(timezone.utc)
         self.status = AppointmentStatus.COMPLETED
-        self.updated_at = datetime.utcnow()
+        self.amount_charged = amount_charged
+        self.completed_at = now
+        self.updated_at = now
 
     def mark_no_show(self) -> None:
-        if self.status != AppointmentStatus.CONFIRMED:
+        if self.status not in self._CLOSEABLE:
             raise BusinessRuleViolationError(
                 f"Cannot mark no-show for appointment in status '{self.status}'"
             )

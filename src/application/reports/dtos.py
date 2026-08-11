@@ -70,7 +70,9 @@ class TopClientsReport:
 
 @dataclass(frozen=True)
 class ProfessionalPerformanceItem:
-    professional_id: UUID
+    # None agrupa las citas sin profesional asignado, que antes quedaban fuera
+    # del reporte por completo.
+    professional_id: UUID | None
     professional_name: str
     total: int
     completed: int

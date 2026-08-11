@@ -23,6 +23,8 @@ class AppointmentMapper:
             cancelled_reason=appointment.cancelled_reason,
             cancelled_at=appointment.cancelled_at,
             reminder_sent_at=appointment.reminder_sent_at,
+            amount_charged=appointment.amount_charged,
+            completed_at=appointment.completed_at,
             created_at=appointment.created_at,
             updated_at=appointment.updated_at,
         )
@@ -44,6 +46,8 @@ class AppointmentMapper:
             cancelled_reason=model.cancelled_reason,
             cancelled_at=model.cancelled_at,
             reminder_sent_at=model.reminder_sent_at,
+            amount_charged=model.amount_charged,
+            completed_at=model.completed_at,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )

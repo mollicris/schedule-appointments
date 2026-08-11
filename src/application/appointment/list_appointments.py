@@ -33,6 +33,12 @@ class AppointmentSummary:
     duration_minutes: int
     ends_at: datetime
     status: AppointmentStatus
+    # El panel precarga el importe con el precio de lista y muestra lo cobrado
+    # en las ya cerradas; el servicio ya se resuelve acá, así que sale sin
+    # consulta extra.
+    service_price: int | None = None
+    amount_charged: int | None = None
+    completed_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +101,9 @@ class ListAppointmentsUseCase(UseCase[ListAppointmentsInput, ListAppointmentsOut
                     duration_minutes=a.duration_minutes,
                     ends_at=a.ends_at,
                     status=a.status,
+                    service_price=service.price if service else None,
+                    amount_charged=a.amount_charged,
+                    completed_at=a.completed_at,
                 )
             )
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, case, cast, func, literal_column, select
@@ -30,12 +30,40 @@ from src.infrastructure.persistence.models.business import ProfessionalModel, Se
 from src.infrastructure.persistence.models.client import ClientModel
 
 
+def _revenue() -> object:
+    """SUM of what was actually collected, over completed appointments.
+
+    Reads ``appointments.amount_charged`` — the figure the staff recorded when
+    closing the appointment — and never ``services.price``. The service price is
+    mutable: sourcing revenue from it meant that raising a price rewrote months
+    already closed, and that a discount or a longer job was invisible.
+
+    Appointments that are not completed contribute zero, so an open agenda never
+    shows as income.
+    """
+    return func.coalesce(
+        func.sum(
+            case(
+                (
+                    and_(
+                        AppointmentModel.status == AppointmentStatus.COMPLETED.value,
+                        AppointmentModel.amount_charged.isnot(None),
+                    ),
+                    AppointmentModel.amount_charged,
+                ),
+                else_=0,
+            )
+        ),
+        0,
+    )
+
+
 class ReportsRepositoryImpl(ReportsRepository):
     """SQL-based implementation of the analytical reports port.
 
     All queries scope by the current tenant and the provided business_id.
-    Revenue is computed as SUM(services.price) for completed appointments
-    only; price is stored in cents.
+    Revenue is SUM(appointments.amount_charged) over completed appointments,
+    in cents. See _revenue() for why it is not the service price.
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -89,21 +117,7 @@ class ReportsRepositoryImpl(ReportsRepository):
         self, business_id: UUID, start: datetime, end: datetime
     ) -> dict[str, int]:
         tenant = get_current_tenant()
-        revenue_expr = func.coalesce(
-            func.sum(
-                case(
-                    (
-                        and_(
-                            AppointmentModel.status == AppointmentStatus.COMPLETED.value,
-                            ServiceModel.price.isnot(None),
-                        ),
-                        ServiceModel.price,
-                    ),
-                    else_=0,
-                )
-            ),
-            0,
-        )
+        revenue_expr = _revenue()
 
         def status_count(status: AppointmentStatus):
             return func.coalesce(
@@ -250,21 +264,7 @@ class ReportsRepositoryImpl(ReportsRepository):
         self, business_id: UUID, period_start: datetime, period_end: datetime, limit: int = 10
     ) -> TopServicesReport:
         tenant = get_current_tenant()
-        revenue_expr = func.coalesce(
-            func.sum(
-                case(
-                    (
-                        and_(
-                            AppointmentModel.status == AppointmentStatus.COMPLETED.value,
-                            ServiceModel.price.isnot(None),
-                        ),
-                        ServiceModel.price,
-                    ),
-                    else_=0,
-                )
-            ),
-            0,
-        )
+        revenue_expr = _revenue()
         stmt = (
             select(
                 ServiceModel.id.label("service_id"),
@@ -302,21 +302,7 @@ class ReportsRepositoryImpl(ReportsRepository):
         self, business_id: UUID, period_start: datetime, period_end: datetime, limit: int = 10
     ) -> TopClientsReport:
         tenant = get_current_tenant()
-        revenue_expr = func.coalesce(
-            func.sum(
-                case(
-                    (
-                        and_(
-                            AppointmentModel.status == AppointmentStatus.COMPLETED.value,
-                            ServiceModel.price.isnot(None),
-                        ),
-                        ServiceModel.price,
-                    ),
-                    else_=0,
-                )
-            ),
-            0,
-        )
+        revenue_expr = _revenue()
         stmt = (
             select(
                 ClientModel.id.label("client_id"),
@@ -359,21 +345,7 @@ class ReportsRepositoryImpl(ReportsRepository):
         self, business_id: UUID, period_start: datetime, period_end: datetime
     ) -> ProfessionalPerformanceReport:
         tenant = get_current_tenant()
-        revenue_expr = func.coalesce(
-            func.sum(
-                case(
-                    (
-                        and_(
-                            AppointmentModel.status == AppointmentStatus.COMPLETED.value,
-                            ServiceModel.price.isnot(None),
-                        ),
-                        ServiceModel.price,
-                    ),
-                    else_=0,
-                )
-            ),
-            0,
-        )
+        revenue_expr = _revenue()
 
         def status_count(status: AppointmentStatus):
             return func.coalesce(
@@ -397,7 +369,15 @@ class ReportsRepositoryImpl(ReportsRepository):
                 revenue_expr.label("revenue"),
             )
             .select_from(AppointmentModel)
-            .join(ProfessionalModel, ProfessionalModel.id == AppointmentModel.professional_id)
+            # Outer join a propósito: con el join interno, toda cita sin
+            # profesional asignado desaparecía del reporte sin dejar rastro —
+            # en un gimnasio con clases grupales, eso es casi todo. Ahora caen
+            # en un grupo propio con professional_id nulo.
+            .join(
+                ProfessionalModel,
+                ProfessionalModel.id == AppointmentModel.professional_id,
+                isouter=True,
+            )
             .join(ServiceModel, ServiceModel.id == AppointmentModel.service_id, isouter=True)
             .where(
                 AppointmentModel.tenant_id == tenant.tenant_id,
@@ -412,7 +392,7 @@ class ReportsRepositoryImpl(ReportsRepository):
         items = [
             ProfessionalPerformanceItem(
                 professional_id=r.professional_id,
-                professional_name=r.professional_name,
+                professional_name=r.professional_name or "Sin profesional asignado",
                 total=int(r.total),
                 completed=int(r.completed),
                 cancelled=int(r.cancelled),

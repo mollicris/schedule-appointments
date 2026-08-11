@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from src.application.reports.repository import ReportsRepository
-from src.presentation.dependencies import get_reports_repository
+from src.domain.business.repository import BusinessRepository
+from src.presentation.dependencies import get_business_repository, get_reports_repository
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -73,7 +75,7 @@ class TopClientsResponse(BaseModel):
 
 
 class ProfessionalPerformanceResponse(BaseModel):
-    professional_id: UUID
+    professional_id: UUID | None
     professional_name: str
     total: int
     completed: int
@@ -108,9 +110,30 @@ class StatusDistributionResponse(BaseModel):
 # ── Date range helper ────────────────────────────────────────────────────────
 
 
-def _resolve_range(from_date: date | None, to_date: date | None) -> tuple[datetime, datetime]:
-    """Default: last 30 days through end of today. Both bounds inclusive of the day."""
-    today = datetime.now(timezone.utc).date()
+async def _business_tz(businesses: BusinessRepository, business_id: UUID) -> ZoneInfo:
+    """The business's own clock, falling back to UTC."""
+    business = await businesses.get_by_id(business_id)
+    try:
+        return ZoneInfo(business.timezone) if business and business.timezone else timezone.utc
+    except ZoneInfoNotFoundError:
+        return timezone.utc
+
+
+async def _resolve_range(
+    businesses: BusinessRepository,
+    business_id: UUID,
+    from_date: date | None,
+    to_date: date | None,
+) -> tuple[datetime, datetime]:
+    """Default: last 30 days through the end of today, in the business's timezone.
+
+    Resolving the range in UTC shifted every day boundary: for a salon in
+    La Paz (UTC−4) the report's day started at 20:00 the previous evening, so
+    anything attended after that hour landed in the following day. A production
+    report that moves work between days is one nobody trusts.
+    """
+    tz = await _business_tz(businesses, business_id)
+    today = datetime.now(tz).date()
     if to_date is None:
         to_date = today
     if from_date is None:
@@ -118,8 +141,9 @@ def _resolve_range(from_date: date | None, to_date: date | None) -> tuple[dateti
     if from_date > to_date:
         raise HTTPException(status_code=400, detail="'from' must be earlier than 'to'")
 
-    start = datetime.combine(from_date, time.min, tzinfo=timezone.utc)
-    end = datetime.combine(to_date, time.min, tzinfo=timezone.utc) + timedelta(days=1)
+    # Local midnight to local midnight, then let the driver hand UTC to Postgres.
+    start = datetime.combine(from_date, time.min, tzinfo=tz)
+    end = datetime.combine(to_date, time.min, tzinfo=tz) + timedelta(days=1)
     return start, end
 
 
@@ -130,10 +154,11 @@ def _resolve_range(from_date: date | None, to_date: date | None) -> tuple[dateti
 async def get_summary(
     business_id: Annotated[UUID, Query(description="Target business")],
     reports: Annotated[ReportsRepository, Depends(get_reports_repository)],
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
 ) -> SummaryResponse:
-    start, end = _resolve_range(from_date, to_date)
+    start, end = await _resolve_range(businesses, business_id, from_date, to_date)
     r = await reports.get_summary(business_id, start, end)
     return SummaryResponse(
         period_start=start,
@@ -160,10 +185,11 @@ async def get_summary(
 async def get_trend(
     business_id: Annotated[UUID, Query()],
     reports: Annotated[ReportsRepository, Depends(get_reports_repository)],
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
 ) -> TrendResponse:
-    start, end = _resolve_range(from_date, to_date)
+    start, end = await _resolve_range(businesses, business_id, from_date, to_date)
     r = await reports.get_trend(business_id, start, end)
     return TrendResponse(
         points=[
@@ -180,11 +206,12 @@ async def get_trend(
 async def get_top_services(
     business_id: Annotated[UUID, Query()],
     reports: Annotated[ReportsRepository, Depends(get_reports_repository)],
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> TopServicesResponse:
-    start, end = _resolve_range(from_date, to_date)
+    start, end = await _resolve_range(businesses, business_id, from_date, to_date)
     r = await reports.get_top_services(business_id, start, end, limit=limit)
     return TopServicesResponse(
         items=[
@@ -201,11 +228,12 @@ async def get_top_services(
 async def get_top_clients(
     business_id: Annotated[UUID, Query()],
     reports: Annotated[ReportsRepository, Depends(get_reports_repository)],
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> TopClientsResponse:
-    start, end = _resolve_range(from_date, to_date)
+    start, end = await _resolve_range(businesses, business_id, from_date, to_date)
     r = await reports.get_top_clients(business_id, start, end, limit=limit)
     return TopClientsResponse(
         items=[
@@ -225,10 +253,11 @@ async def get_top_clients(
 async def get_professional_performance(
     business_id: Annotated[UUID, Query()],
     reports: Annotated[ReportsRepository, Depends(get_reports_repository)],
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
 ) -> ProfessionalPerformanceListResponse:
-    start, end = _resolve_range(from_date, to_date)
+    start, end = await _resolve_range(businesses, business_id, from_date, to_date)
     r = await reports.get_professional_performance(business_id, start, end)
     return ProfessionalPerformanceListResponse(
         items=[
@@ -248,10 +277,11 @@ async def get_professional_performance(
 async def get_heatmap(
     business_id: Annotated[UUID, Query()],
     reports: Annotated[ReportsRepository, Depends(get_reports_repository)],
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
 ) -> HeatmapResponse:
-    start, end = _resolve_range(from_date, to_date)
+    start, end = await _resolve_range(businesses, business_id, from_date, to_date)
     r = await reports.get_heatmap(business_id, start, end)
     return HeatmapResponse(
         cells=[
@@ -265,10 +295,11 @@ async def get_heatmap(
 async def get_status_distribution(
     business_id: Annotated[UUID, Query()],
     reports: Annotated[ReportsRepository, Depends(get_reports_repository)],
+    businesses: Annotated[BusinessRepository, Depends(get_business_repository)],
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
 ) -> StatusDistributionResponse:
-    start, end = _resolve_range(from_date, to_date)
+    start, end = await _resolve_range(businesses, business_id, from_date, to_date)
     r = await reports.get_status_distribution(business_id, start, end)
     return StatusDistributionResponse(
         buckets=[

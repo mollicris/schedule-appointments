@@ -9,6 +9,10 @@ from pydantic import BaseModel, Field
 
 from src.application.appointment.book_appointment import BookAppointmentInput, BookAppointmentUseCase
 from src.application.appointment.cancel_appointment import CancelAppointmentInput, CancelAppointmentUseCase
+from src.application.appointment.complete_appointment import (
+    CompleteAppointmentInput,
+    CompleteAppointmentUseCase,
+)
 from src.application.appointment.get_appointment import GetAppointmentInput, GetAppointmentUseCase
 from src.application.appointment.get_available_slots import GetAvailableSlotsInput, GetAvailableSlotsUseCase
 from src.application.appointment.list_appointments import ListAppointmentsInput, ListAppointmentsUseCase
@@ -76,6 +80,9 @@ class AppointmentSummarySchema(BaseModel):
     duration_minutes: int
     ends_at: datetime
     status: str
+    service_price: int | None = None      # list price, in cents
+    amount_charged: int | None = None     # what was actually collected
+    completed_at: datetime | None = None
 
 
 class CancelRequest(BaseModel):
@@ -84,6 +91,14 @@ class CancelRequest(BaseModel):
 
 class RescheduleRequest(BaseModel):
     new_scheduled_at: datetime = Field(description="New UTC datetime for the appointment")
+
+
+class CompleteRequest(BaseModel):
+    # Required on purpose: 0 means "not charged" and saying so is a deliberate
+    # act. A null here would be a figure nobody can justify when the revenue
+    # report is audited months later.
+    amount_charged: int = Field(ge=0, description="Amount actually charged, in cents")
+    note: str | None = Field(default=None, max_length=255)
 
 
 class AvailableSlotsSchema(BaseModel):
@@ -254,6 +269,9 @@ async def list_appointments(
                 duration_minutes=a.duration_minutes,
                 ends_at=a.ends_at,
                 status=a.status.value,
+                service_price=a.service_price,
+                amount_charged=a.amount_charged,
+                completed_at=a.completed_at,
             )
             for a in output.appointments
         ],
@@ -283,6 +301,35 @@ async def cancel_appointment(
         message="Appointment cancelled",
         code="APPOINTMENT_CANCELLED",
         data={"appointment_id": str(output.appointment_id), "status": output.status.value},
+    )
+
+
+@router.patch(
+    "/{appointment_id}/complete",
+    status_code=status.HTTP_200_OK,
+    summary="Mark an appointment as attended and record what was charged",
+)
+async def complete_appointment(
+    appointment_id: UUID,
+    payload: CompleteRequest,
+    appointments: Annotated[AppointmentRepository, Depends(get_appointment_repository)],
+    uow: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> SuccessResponse:
+    use_case = CompleteAppointmentUseCase(appointments=appointments, uow=uow)
+    output = await use_case.execute(CompleteAppointmentInput(
+        appointment_id=appointment_id,
+        amount_charged=payload.amount_charged,
+        note=payload.note,
+    ))
+    return success_response(
+        message="Appointment completed",
+        code="APPOINTMENT_COMPLETED",
+        data={
+            "appointment_id": str(output.appointment_id),
+            "status": output.status.value,
+            "amount_charged": output.amount_charged,
+            "completed_at": output.completed_at.isoformat(),
+        },
     )
 
 

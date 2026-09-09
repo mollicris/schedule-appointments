@@ -86,8 +86,8 @@ jobs:
             --allow-unauthenticated \
             --add-cloudsql-instances agentappointment:southamerica-west1:databasepg \
             --set-env-vars "^|^DATABASE_URL=${DATABASE_URL}|REDIS_URL=|ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}|JWT_SECRET_KEY=${JWT_SECRET_KEY}|WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN}|WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN}|WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID}|WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET}|META_APP_ID=${META_APP_ID}|META_APP_SECRET=${META_APP_SECRET}|META_VERIFY_TOKEN=${META_VERIFY_TOKEN}|APP_ENV=production|APP_CORS_ORIGINS=${APP_CORS_ORIGINS}|EMAIL_PROVIDER=smtp|EMAIL_FROM=${EMAIL_FROM}|EMAIL_LANDING_BASE_URL=${EMAIL_LANDING_BASE_URL}|SMTP_HOST=smtp.gmail.com|SMTP_PORT=587|SMTP_USE_TLS=true|SMTP_USER=${SMTP_USER}|SMTP_PASSWORD=${SMTP_PASSWORD}" \
-            --min-instances 1 \
-            --max-instances 1 \
+            --min-instances 0 \
+            --max-instances 0 \
             --memory 512Mi \
             --timeout 60
 
